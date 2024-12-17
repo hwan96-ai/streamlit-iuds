@@ -279,13 +279,25 @@ def load_db_with_retry(base_path: str, max_retries=3):
             # SQLite 파일 권한 재설정
             sqlite_path = os.path.join(base_path, "chroma.sqlite3")
             if os.path.exists(sqlite_path):
-                os.chmod(sqlite_path, 0o777)  # 더 관대한 권한으로 설정
-                
-            # 상위 디렉토리들의 권한도 설정
-            current_path = base_path
-            while current_path != '/':
-                os.chmod(current_path, 0o777)
-                current_path = os.path.dirname(current_path)
+                os.chmod(sqlite_path, 0o666)
+            
+            # 현재 디렉토리의 권한만 설정
+            os.chmod(base_path, 0o777)
+            
+            # 하위 디렉토리 권한 설정
+            for root, dirs, files in os.walk(base_path):
+                for d in dirs:
+                    dir_path = os.path.join(root, d)
+                    try:
+                        os.chmod(dir_path, 0o777)
+                    except Exception:
+                        pass
+                for f in files:
+                    file_path = os.path.join(root, f)
+                    try:
+                        os.chmod(file_path, 0o666)
+                    except Exception:
+                        pass
             
             # DB 로드
             db = load_chroma_db(base_path)
@@ -293,9 +305,10 @@ def load_db_with_retry(base_path: str, max_retries=3):
             # 연결 테스트
             if verify_db_connection(db):
                 return db
-            time.sleep(1)  # 재시도 전 대기
+            time.sleep(1)
             
         except Exception as e:
+            st.error(f"DB 로드 시도 {attempt + 1} 실패: {str(e)}")
             if attempt == max_retries - 1:
                 raise
             time.sleep(1)
