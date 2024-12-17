@@ -21,7 +21,16 @@ import sys
 import os
 from datetime import datetime
 from langchain.schema.runnable import RunnablePassthrough
-from aws import get_bedrock_client
+def get_bedrock_client():
+    session = boto3.Session(
+        aws_access_key_id=st.secrets["aws_access_key_id"],
+        aws_secret_access_key=st.secrets["aws_secret_access_key"],
+        region_name="us-west-2"
+    )
+    return session.client(
+        service_name="bedrock-runtime",
+        region_name="us-west-2"
+    )
 
 def get_current_datetime_with_day():
     now = datetime.now()
@@ -38,17 +47,36 @@ def load_chroma_db(base_path: str):
     if not os.path.exists(base_path):
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
-    bedrock_runtime = get_bedrock_client()
-    embeddings = BedrockEmbeddings(
-        model_id="amazon.titan-embed-text-v1",
-        client=bedrock_runtime
-    )
-    
-    db = Chroma(
-        persist_directory=base_path,
-        embedding_function=embeddings,
-    )
-    return db
+    try:
+        bedrock_runtime = get_bedrock_client()
+        embeddings = BedrockEmbeddings(
+            model_id="amazon.titan-embed-text-v1",
+            client=bedrock_runtime
+        )
+        
+        # ChromaDB 설정 추가
+        from chromadb.config import Settings
+        import chromadb
+        
+        # ChromaDB 클라이언트 생성
+        client = chromadb.PersistentClient(
+            path=base_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                is_persistent=True,
+            )
+        )
+        
+        # Langchain Chroma 인스턴스 생성
+        db = Chroma(
+            client=client,
+            embedding_function=embeddings,
+        )
+        
+        return db
+    except Exception as e:
+        st.error(f"ChromaDB 로드 중 오류 발생: {str(e)}")
+        raise
 
 def get_unique_product_ids(db: Chroma):
     """Chroma DB에서 고유한 product_uuid 목록을 가져옵니다."""
@@ -189,7 +217,7 @@ def main():
     st.title("상품 문의 챗봇 🤖")
     
     # 현재 스크립트의 디렉토리 경로 가져오기
-    db_path = "C:/Users/skdwn/Desktop/Backpackr_2/Code/step8/chroma_db_1"
+    db_path = "./chroma_db_1"
     
     try:
         # DB 로드
