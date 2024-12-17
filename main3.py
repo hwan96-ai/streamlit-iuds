@@ -547,39 +547,39 @@ def main():
                         st.session_state.messages.append(
                             {"role": "assistant", "content": answers[0]}
                         )
-                    
-                except Exception as e:
-                    st.error(f"응답 생성 중 오류 발생: {str(e)}")
-                    # DB 재연결 시도
-                    try:
-                        if db is not None:
-                            db = load_chroma_db(temp_dir)
-                    except:
-                        pass
-                    return
+                        
+                    except Exception as e:
+                        st.error(f"응답 생성 중 오류 발생: {str(e)}")
+                        # DB 재연결 시도
+                        try:
+                            if db is not None:
+                                db = load_chroma_db(temp_dir)
+                        except:
+                            pass
+                        return
 
-except Exception as e:
-    st.error(f"오류가 발생했습니다: {str(e)}")
-    return
+    except Exception as e:
+        st.error(f"오류가 발생했습니다: {str(e)}")
+        return
     
-finally:
-    # 리소스 정리
-    try:
-        # ChromaDB 정리
-        if db is not None:
-            try:
-                if hasattr(db, '_collection'):
-                    db._collection.count()  # 연결 확인
-            except Exception:
-                pass  # 이미 연결이 닫혀있는 경우 무시
+    finally:
+        # 리소스 정리
+        try:
+            # ChromaDB 정리
+            if db is not None:
+                try:
+                    if hasattr(db, '_collection'):
+                        db._collection.count()  # 연결 확인
+                except Exception:
+                    pass  # 이미 연결이 닫혀있는 경우 무시
             
-        # 임시 디렉토리 정리
-        if os.path.exists(temp_dir):
-            time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            # 임시 디렉토리 정리
+            if os.path.exists(temp_dir):
+                time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
+                shutil.rmtree(temp_dir, ignore_errors=True)
             
-    except Exception as cleanup_error:
-        st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
+        except Exception as cleanup_error:
+            st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
 
 
 if __name__ == "__main__":
