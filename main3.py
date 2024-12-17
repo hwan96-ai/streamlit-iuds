@@ -172,14 +172,25 @@ def retrieve_docs(query: str, db=None, product_uuid=None):
     
 def create_rag_chain(db: Chroma, product_uuid: str):
     """RAG 체인 생성"""
-    llm = ChatBedrock(
-        model_id="anthropic.claude-3-5-sonnet-20241022-v2:0",
-        client=get_bedrock_client(),
-        model_kwargs={
-            "temperature": 0,
-            "max_tokens": 4000
-        }
-    )
+    try:
+        llm = ChatBedrock(
+            model_id="anthropic.claude-3-5-sonnet-20241022-v2:0",
+            client=get_bedrock_client(),
+            model_kwargs={
+                "temperature": 0,
+                "max_tokens": 4000
+            }
+        )
+        
+        # 검색기 설정 (미리 생성)
+        st.write("Retriever 생성 시작")
+        retriever = db.as_retriever(
+            search_kwargs={
+                "k": 3,
+                "filter": {"product_uuid": product_uuid}
+            }
+        )
+        st.write("Retriever 생성 완료")
     
     # 컨텍스트 인식 질문 재구성을 위한 프롬프트
     contextualize_q_system_prompt = """Given a chat history and the latest user question \
@@ -277,22 +288,32 @@ def create_rag_chain(db: Chroma, product_uuid: str):
     history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
     doc_chain = create_stuff_documents_chain(llm, qa_prompt)
     
-    chain = (
-        RunnablePassthrough.assign(
-            chat_history=lambda x: x["chat_history"]
-        ) 
-        | {
-            "question": lambda x: x["question"],
-            "chat_history": lambda x: x["chat_history"],
-            "documents": lambda x: history_aware_retriever({
-                "question": x["question"],
-                "chat_history": x["chat_history"]
-            })
-        } 
-        | doc_chain
-    )
+        # 전체 체인 조합 전에 retriever 테스트
+        st.write("Retriever 테스트 시작")
+        test_results = retriever.get_relevant_documents("테스트 쿼리")
+        st.write(f"Retriever 테스트 결과: {len(test_results)} 문서 검색됨")
 
-    return chain
+        # 체인 생성
+        chain = (
+            RunnablePassthrough.assign(
+                chat_history=lambda x: x["chat_history"]
+            ) 
+            | {
+                "question": lambda x: x["question"],
+                "chat_history": lambda x: x["chat_history"],
+                "documents": lambda x: history_aware_retriever({
+                    "question": x["question"],
+                    "chat_history": x["chat_history"]
+                })
+            } 
+            | doc_chain
+        )
+
+        return chain
+
+    except Exception as e:
+        st.error(f"RAG 체인 생성 중 오류 발생: {str(e)}")
+        raise Exception(f"RAG 체인 생성 실패: {str(e)}")
 
 
         
@@ -361,10 +382,29 @@ def main():
             st.info(f"현재 선택: {selected_name}")
         
         # 세션 상태 초기화 또는 업데이트
-        # 세션 상태 초기화 또는 업데이트 부분 수정
+        # 세션 상태 초기화 또는 업데이트
         if ('conversation_chain' not in st.session_state or 
             'current_product_id' not in st.session_state or 
             st.session_state.current_product_id != selected_product_id):
+            
+            try:
+                st.write("새로운 대화 체인 생성 시작")
+                chain = create_rag_chain(db, selected_product_id)
+                st.write("대화 체인 생성 완료")
+                st.session_state.conversation_chain = chain
+                st.session_state.current_product_id = selected_product_id
+                
+                # 체인 테스트
+                st.write("대화 체인 테스트 시작")
+                test_response = chain.invoke({
+                    "question": "테스트 질문입니다.",
+                    "chat_history": []
+                })
+                st.write("대화 체인 테스트 완료")
+                
+            except Exception as e:
+                st.error(f"대화 체인 생성 중 오류: {str(e)}")
+                raise
             
             # 제품이 변경되었을 때 채팅 기록 초기화
             if ('current_product_id' in st.session_state and 
