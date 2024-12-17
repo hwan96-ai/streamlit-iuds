@@ -89,23 +89,18 @@ def load_chroma_db(base_path: str):
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
     try:
-        # 권한 확인 및 설정
-        os.chmod(base_path, 0o777)
-        
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v1",
             client=bedrock_runtime
         )
         
+        # read_only 모드로 DB 열기
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
+            read_only=True  # 이 부분 추가
         )
-        
-        # 연결 테스트
-        test_query = "test"
-        db.similarity_search(test_query, k=1)
         
         return db
         
@@ -283,16 +278,21 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 def main():
     st.title("상품 문의 챗봇 🤖")
     
-    temp_dir = tempfile.mkdtemp()
-    db = None
+    if 'temp_dir' not in st.session_state:
+        st.session_state.temp_dir = tempfile.mkdtemp(prefix="chromadb_")
     
     try:
         # S3에서 DB 다운로드
         with st.spinner("데이터베이스를 불러오는 중..."):
-            download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
+            if 'db_downloaded' not in st.session_state:
+                download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, st.session_state.temp_dir)
+                st.session_state.db_downloaded = True
         
         # DB 로드
-        db = load_chroma_db(temp_dir)
+        if 'db' not in st.session_state:
+            st.session_state.db = load_chroma_db(st.session_state.temp_dir)
+        
+        db = st.session_state.db  # 세션에 저장된 DB 인스턴스 사용
         product_info = get_product_info_from_db(db)
         
         if not product_info:
