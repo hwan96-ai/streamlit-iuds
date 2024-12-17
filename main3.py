@@ -4,10 +4,7 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import tempfile
 import os 
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_aws import BedrockEmbeddings, ChatBedrock
@@ -86,88 +83,43 @@ def get_current_datetime_with_day():
     weekday = now.strftime("%A")
     return f"{year}년{month}월{day}일{weekday} {hour}시{minute}분"
 
-# def load_chroma_db(base_path: str):
-#     """Chroma DB 로드"""
-#     if not os.path.exists(base_path):  # os.path 사용
-#         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
-    
-#     try:
-#         bedrock_runtime = get_bedrock_client()
-#         embeddings = BedrockEmbeddings(
-#             model_id="amazon.titan-embed-text-v1",
-#             client=bedrock_runtime
-#         )
-        
-#         db = Chroma(
-#             persist_directory=base_path,
-#             embedding_function=embeddings,
-#         )
-#         return db
-#     except Exception as e:
-#         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
+    if not os.path.exists(base_path):  # os.path 사용
+        raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
+    
     try:
-        if not os.path.exists(base_path):
-            raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
-        
-        # Bedrock 클라이언트 설정
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v1",
             client=bedrock_runtime
         )
         
-        # ChromaDB 초기화
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
-            collection_name="product_qa"  # 컬렉션 이름 지정
         )
-
-        # 연결 테스트
-        try:
-            collection_count = len(db.get()['ids'])
-            st.write(f"데이터베이스 내 문서 수: {collection_count}")
-            return db
-        except Exception as e:
-            raise Exception(f"데이터베이스 연결 테스트 실패: {str(e)}")
-        
+        return db
     except Exception as e:
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
-        
+
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
-        # 전체 데이터 가져오기
-        result = db.get()
-        if not result:
-            raise ValueError("데이터베이스에서 데이터를 가져올 수 없습니다.")
-
-        # 메타데이터 처리
-        product_info = {}
-        if 'metadatas' in result and result['metadatas']:
-            for metadata in result['metadatas']:
-                if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
-                    product_uuid = metadata['product_uuid']
-                    product_name = metadata['product_name']
-                    if product_uuid not in product_info:
-                        product_info[product_uuid] = product_name
-
-        if not product_info:
-            raise ValueError("제품 정보를 찾을 수 없습니다.")
-
-        return product_info
+        collection = db._collection
+        metadatas = collection.get()['metadatas']
         
+        product_info = {}
+        for metadata in metadatas:
+            if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
+                product_uuid = metadata['product_uuid']
+                product_name = metadata['product_name']
+                if product_uuid not in product_info:
+                    product_info[product_uuid] = product_name
+        
+        return product_info
     except Exception as e:
         st.sidebar.error(f"제품 정보 조회 중 오류 발생: {str(e)}")
-        # 디버깅을 위한 추가 정보
-        st.sidebar.write("DB 정보:", db)
-        try:
-            result = db.get()
-            st.sidebar.write("DB 내용:", result)
-        except Exception as inner_e:
-            st.sidebar.error(f"DB 내용 확인 실패: {str(inner_e)}")
         return {}
 
 def clear_chat_history():
@@ -192,18 +144,6 @@ def retrieve_docs(query: str, db=None, product_uuid=None):
         print(f"문서 검색 중 오류 발생: {str(e)}")
         return []
     
-def create_filtered_retriever(db: Chroma, product_uuid: str):
-    """특정 product_uuid에 대한 필터링된 retriever 생성"""
-    search_kwargs = {
-        "filter": {'product_uuid': product_uuid},
-        "k": 3
-    }
-    
-    return db.as_retriever(
-        search_kwargs=search_kwargs,
-        search_type="similarity"
-    )
-
 def create_rag_chain(db: Chroma, product_uuid: str):
     """RAG 체인 생성"""
     llm = ChatBedrock(
@@ -211,19 +151,11 @@ def create_rag_chain(db: Chroma, product_uuid: str):
         client=get_bedrock_client(),
         model_kwargs={
             "temperature": 0,
-            "top_k": 0,
-            "top_p": 1,
-            "max_tokens": 4000,
-            "stop_sequences": ["\n\nHuman"]
-        },
-        streaming=True,
-        callbacks=[StreamingStdOutCallbackHandler()]
+            "max_tokens": 4000
+        }
     )
-
-    # 필터링된 retriever 생성
-    retriever = create_filtered_retriever(db, product_uuid)
-
-    # 컨텍스트 인식 질문 재구성
+    
+    # 컨텍스트 인식 질문 재구성을 위한 프롬프트
     contextualize_q_system_prompt = """Given a chat history and the latest user question \
     which might reference context in the chat history, formulate a standalone question \
     which can be understood without the chat history. Do NOT answer the question, \
@@ -231,209 +163,276 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 
     contextualize_q_prompt = ChatPromptTemplate.from_messages([
         ("system", contextualize_q_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
+        MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{question}"),
     ])
 
-    # History-aware retriever 생성
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_q_prompt
-    )
-
-    # QA 체인 생성
-    qa_system_prompt = """당신은 이 상품의 판매자입니다.
+    # 메인 QA 프롬프트
+    current_time = get_current_datetime_with_day()
+    qa_system_prompt = f"""당신은 이 상품의 판매자입니다.
     중요 규칙:
     1. 컨텍스트에 명시된 정보만 사용해야 합니다
     - 컨텍스트에 없는 내용은 "해당 정보가 없어 답변드리기 어렵습니다"라고 답변하세요
     - 추측이나 일반적인 답변은 금지됩니다
     2. 답변 전 반드시 컨텍스트를 확인하세요.
+    - 가격, 수량, 배송일정 등 수치는 반드시 컨텍스트와 일치해야 함
+    - 없는 정보를 임의로 생성하지 마세요
     3. 질문과 직접 관련된 정보만 답변하세요
-    Context: {context}"""
+    - 불필요한 부가 설명이나 맥락은 제외
+    - 이전 대화에서 확인된 내용만 참조
+    4. 배송 관련 질문에 공휴일과 현재 시간: '{current_time}'을 고려하세요
+    
+    답변을 3가지 스타일로 작성하고 각 답변 사이에 ### 를 넣어서 구분해주세요.
+    1번째 답변: 문의내역 + 동일한 스타일
+    2번째 답변: 문의내역 + 창의적인 스타일
+    3번째 답변: 문의내역 + 재밌는 답변
+
+    형식: 답변1 ###\n 답변2 ###\n 답변3
+
+    주의사항:
+    1. 오직 답변과 구분자(###)만 출력하세요
+    2. 컨텍스트의 대화 스타일과 이모지를 참고하세요
+    3. 절대 고객의 개인 정보(주소,휴대폰 번호 등)는 답변하지마세요.
+
+    상품 정보 및 과거 문의 내역:
+    {{context}}
+    """
 
     qa_prompt = ChatPromptTemplate.from_messages([
         ("system", qa_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
+        MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{question}")
     ])
 
-    # Document chain 생성
-    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-
-    # 최종 RAG 체인 생성
-    rag_chain = create_retrieval_chain(
-        history_aware_retriever, 
-        question_answer_chain
+    # 검색기 설정
+    retriever = db.as_retriever(
+        search_kwargs={
+            "k": 3,
+            "filter": {"product_uuid": product_uuid}
+        }
     )
 
-    return rag_chain
+    # History-aware retriever 생성
+    def create_history_aware_retriever(llm, retriever, prompt):
+        def get_retriever_chain(llm, prompt):
+            chain = prompt | llm | StrOutputParser()
+            return chain
+
+        def historical_retriever(inputs):
+            question = inputs["question"]
+            chat_history = inputs["chat_history"]
+            
+            context_chain = get_retriever_chain(llm, prompt)
+            contextualized_q = context_chain.invoke({
+                "question": question,
+                "chat_history": chat_history
+            })
+            
+            return retriever.invoke(contextualized_q)
+
+        return historical_retriever
+
+    # Document chain 생성
+    def create_stuff_documents_chain(llm, prompt):
+        def format_docs(docs):
+            return "\n\n".join([d.page_content for d in docs])
+        
+        chain = (
+            RunnablePassthrough.assign(
+                context=lambda x: format_docs(x["documents"])
+            ) 
+            | prompt 
+            | llm 
+            | StrOutputParser()
+        )
+        return chain
+
+    # 전체 체인 조합
+    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
+    doc_chain = create_stuff_documents_chain(llm, qa_prompt)
+    
+    chain = (
+        RunnablePassthrough.assign(
+            chat_history=lambda x: x["chat_history"]
+        ) 
+        | {
+            "question": lambda x: x["question"],
+            "chat_history": lambda x: x["chat_history"],
+            "documents": lambda x: history_aware_retriever({
+                "question": x["question"],
+                "chat_history": x["chat_history"]
+            })
+        } 
+        | doc_chain
+    )
+
+    return chain
+
 
         
 def main():
     st.title("상품 문의 챗봇 🤖")
     
-    # 현재 작업 디렉토리 내에 임시 디렉토리 생성
-    temp_dir = os.path.join(os.getcwd(), "temp_chroma_db")
-    os.makedirs(temp_dir, exist_ok=True)
-    os.chmod(temp_dir, 0o777)
-    
+    temp_dir = tempfile.mkdtemp()
     db = None
     
     try:
         # S3에서 DB 다운로드
         with st.spinner("데이터베이스를 불러오는 중..."):
-            try:
-                download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
-                st.success("데이터베이스 다운로드 완료")
-                
-                # 디버깅 정보 출력
-                st.write("임시 디렉토리 경로:", temp_dir)
-                st.write("디렉토리 내용:", os.listdir(temp_dir))
-                
-                # 파일 권한 확인
-                for root, dirs, files in os.walk(temp_dir):
-                    for d in dirs:
-                        os.chmod(os.path.join(root, d), 0o777)
-                    for f in files:
-                        os.chmod(os.path.join(root, f), 0o666)
-                
-            except Exception as e:
-                st.error(f"데이터베이스 다운로드 실패: {str(e)}")
-                return
+            download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
         
-        # DB 로드 시도
-        try:
-            db = load_chroma_db(temp_dir)
-            st.success("데이터베이스 로드 완료")
-            
-            # 제품 정보 가져오기
-            product_info = get_product_info_from_db(db)
-            
-            if not product_info:
-                st.error("제품 정보를 불러올 수 없습니다. 데이터베이스를 확인해주세요.")
-                return
-            
-            # 사이드바 설정
-            with st.sidebar:
-                st.title("제품 선택 🛍️")
-                st.markdown("---")
-                
-                product_names = {name: uuid for uuid, name in product_info.items()}
-                selected_name = st.selectbox(
-                    "문의하실 제품을 선택하세요",
-                    options=list(product_names.keys()),
-                    key="product_selector"
-                )
-                selected_product_id = product_names[selected_name]
-                
-                st.markdown("---")
-                
-                if st.button("💫 채팅 기록 초기화", use_container_width=True):
-                    clear_chat_history()
-                    st.success("채팅 기록이 초기화되었습니다!")
-                    st.rerun()
-                
-                st.markdown("### 선택된 제품 정보")
-                st.info(f"현재 선택: {selected_name}")
-            
-            # 세션 상태 초기화 또는 업데이트
-            if ('conversation_chain' not in st.session_state or 
-                'current_product_id' not in st.session_state or 
-                st.session_state.current_product_id != selected_product_id):
-                
-                # 제품이 변경되었을 때 채팅 기록 초기화
-                if ('current_product_id' in st.session_state and 
-                    st.session_state.current_product_id != selected_product_id):
-                    clear_chat_history()
-                
-                chain = create_rag_chain(db, selected_product_id)
-                st.session_state.conversation_chain = chain
-                st.session_state.current_product_id = selected_product_id
+        # DB 로드
+        db = load_chroma_db(temp_dir)
+        product_info = get_product_info_from_db(db)
         
-                # 페이지 새로고침
+        if not product_info:
+            st.error("제품 정보를 불러올 수 없습니다. 데이터베이스를 확인해주세요.")
+            return
+        
+        # 사이드바 설정
+        with st.sidebar:
+            st.title("제품 선택 🛍️")
+            st.markdown("---")
+            
+            product_names = {name: uuid for uuid, name in product_info.items()}
+            selected_name = st.selectbox(
+                "문의하실 제품을 선택하세요",
+                options=list(product_names.keys()),
+                key="product_selector"
+            )
+            selected_product_id = product_names[selected_name]
+            
+            st.markdown("---")
+            
+            if st.button("💫 채팅 기록 초기화", use_container_width=True):
+                clear_chat_history()
+                st.success("채팅 기록이 초기화되었습니다!")
                 st.rerun()
             
-            if 'messages' not in st.session_state:
-                st.session_state.messages = []
+            st.markdown("### 선택된 제품 정보")
+            st.info(f"현재 선택: {selected_name}")
+        
+        # 세션 상태 초기화 또는 업데이트
+        # 세션 상태 초기화 또는 업데이트 부분 수정
+        if ('conversation_chain' not in st.session_state or 
+            'current_product_id' not in st.session_state or 
+            st.session_state.current_product_id != selected_product_id):
             
-            # 초기 메시지 표시
-            if not st.session_state.messages:
-                st.markdown(f"""
-                ### 👋 안녕하세요!
-                **{product_info[selected_product_id]}**에 대해 궁금하신 점을 자유롭게 문의해주세요.
-                """)
+            # 제품이 변경되었을 때 채팅 기록 초기화
+            if ('current_product_id' in st.session_state and 
+                st.session_state.current_product_id != selected_product_id):
+                clear_chat_history()
             
-            # 이전 메시지들 표시
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+            chain = create_rag_chain(db, selected_product_id)
+            st.session_state.conversation_chain = chain
+            st.session_state.current_product_id = selected_product_id
+    
+            # 페이지 새로고침
+            st.rerun()
+        
+        if 'messages' not in st.session_state:
+            st.session_state.messages = []
+        
+        # 초기 메시지 표시
+        if not st.session_state.messages:
+            st.markdown(f"""
+            ### 👋 안녕하세요!
+            **{product_info[selected_product_id]}**에 대해 궁금하신 점을 자유롭게 문의해주세요.
+            """)
+        
+        # 이전 메시지들 표시
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # 새로운 사용자 입력 처리
+        if prompt := st.chat_input("무엇을 도와드릴까요?"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
             
-            # 새로운 사용자 입력 처리
-            if prompt := st.chat_input("무엇을 도와드릴까요?"):
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
-                
-                with st.chat_message("assistant"):
-                    with st.spinner('답변을 생성중입니다...'):
-                        try:
-                            # 응답 생성
-                            response = st.session_state.conversation_chain.invoke({
-                                "input": prompt,
-                                "chat_history": st.session_state.messages
-                            })
+            with st.chat_message("assistant"):
+                with st.spinner('답변을 생성중입니다...'):
+                    try:
+                        # 응답 생성
+                        response = st.session_state.conversation_chain.invoke({
+                            "question": prompt,
+                            "chat_history": st.session_state.messages
+                        })
 
-                            if not response.get('answer'):
-                                raise ValueError("응답이 생성되지 않았습니다.")
+                        if not response:
+                            raise ValueError("응답이 생성되지 않았습니다.")
 
-                            # 응답 처리
-                            answer = response['answer']
-                            source_documents = response.get('source_documents', [])
-                            
-                            # 응답 표시
-                            st.write(answer)
-                            
-                            # 참고 문서 표시
-                            if source_documents:
-                                with st.expander("참고 문서"):
-                                    for i, doc in enumerate(source_documents[:3], 1):
-                                        st.markdown(f"**문서 {i}**")
-                                        st.markdown(f"내용: {doc.page_content}")
-                                        st.markdown("메타데이터:")
-                                        st.json(doc.metadata)
-                            
-                            # 응답을 채팅 히스토리에 저장
-                            st.session_state.messages.append(
-                                {"role": "assistant", "content": answer}
-                            )
-                            
-                        except Exception as e:
-                            st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
-                            return
-                            
-        except Exception as e:
-            st.error(f"데이터베이스 로드 실패: {str(e)}")
-            return
-            
+                        # 응답을 ### 구분자로 분리하고 처리
+                        answers = response.split("###")
+                        answers = [answer.strip() for answer in answers]
+                        
+                        # 필요한 경우 답변 리스트 보충
+                        while len(answers) < 3:
+                            answers.append("답변이 없습니다.")
+                        
+                        # 참고 문서 가져오기
+                        docs = retrieve_docs(prompt, db, selected_product_id)
+                        
+                        # 탭으로 다양한 응답 스타일 표시
+                        tab1, tab2, tab3 = st.tabs(["💬 기본 답변", "✨ 창의적 답변", "😊 재미있는 답변"])
+                        
+                        with tab1:
+                            st.markdown(answers[0])
+                            if docs and len(docs) > 0:
+                                with st.expander("참고 문서 1"):
+                                    st.markdown(f"**내용:**\n{docs[0].page_content}")
+                                    st.markdown("**메타데이터:**")
+                                    st.json(docs[0].metadata)
+                        
+                        with tab2:
+                            st.markdown(answers[1])
+                            if docs and len(docs) > 1:
+                                with st.expander("참고 문서 2"):
+                                    st.markdown(f"**내용:**\n{docs[1].page_content}")
+                                    st.markdown("**메타데이터:**")
+                                    st.json(docs[1].metadata)
+                        
+                        with tab3:
+                            st.markdown(answers[2])
+                            if docs and len(docs) > 2:
+                                with st.expander("참고 문서 3"):
+                                    st.markdown(f"**내용:**\n{docs[2].page_content}")
+                                    st.markdown("**메타데이터:**")
+                                    st.json(docs[2].metadata)
+                        
+                        # 첫 번째 답변을 채팅 히스토리에 저장
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": answers[0]}
+                        )
+                        
+                    except Exception as e:
+                        st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
+                        return
+
     except Exception as e:
         st.error(f"오류가 발생했습니다: {str(e)}")
         return
         
     finally:
         # 리소스 정리
-        if db is not None:
-            try:
-                if hasattr(db, '_collection'):
-                    db._collection.count()
-            except Exception:
-                pass
-            
-        # 임시 파일 정리
         try:
-            time.sleep(2)  # 파일 사용이 완전히 끝날 때까지 대기
-            if os.path.exists(temp_dir):
+            # ChromaDB 정리
+            if db is not None:
+                try:
+                    if hasattr(db, '_collection'):
+                        db._collection.count()  # 연결 확인
+                except Exception:
+                    pass  # 이미 연결이 닫혀있는 경우 무시
+                
+            # 임시 디렉토리 정리
+            if os.path.exists(temp_dir):  # st.path를 os.path로 변경
+                time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
                 shutil.rmtree(temp_dir, ignore_errors=True)
+                
         except Exception as cleanup_error:
             st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
+
 
 if __name__ == "__main__":
     try:
