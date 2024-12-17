@@ -108,14 +108,15 @@ def load_chroma_db(base_path: str):
             )
         )
         
-        # 컬렉션 이름 확인 (예시로 'my_collection' 사용)
-        collection_name = "my_collection"
+        # 사용 가능한 컬렉션 목록 확인
+        collections = client.list_collections()
+        st.write(f"사용 가능한 컬렉션들: {[col.name for col in collections]}")
         
-        # 기존 컬렉션 가져오기 또는 새로 생성
-        try:
-            collection = client.get_collection(collection_name)
-        except ValueError:
-            collection = client.create_collection(collection_name)
+        if not collections:
+            raise ValueError("사용 가능한 컬렉션이 없습니다.")
+            
+        # 첫 번째 사용 가능한 컬렉션 사용
+        collection_name = collections[0].name
         
         # Langchain Chroma 인스턴스 생성
         db = Chroma(
