@@ -95,11 +95,9 @@ def load_chroma_db(base_path: str):
             client=bedrock_runtime
         )
         
-        # read_only 모드로 DB 열기
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
-            read_only=True  # 이 부분 추가
         )
         
         return db
@@ -107,7 +105,7 @@ def load_chroma_db(base_path: str):
     except Exception as e:
         print(f"ChromaDB 로드 오류: {str(e)}")
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
-
+        
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
@@ -427,13 +425,14 @@ def main():
     finally:
         # 리소스 정리
         try:
-            # ChromaDB 정리
-            if db is not None:
-                try:
-                    if hasattr(db, '_collection'):
-                        db._collection.count()  # 연결 확인
-                except Exception:
-                    pass  # 이미 연결이 닫혀있는 경우 무시
+            # 임시 디렉토리 정리
+            temp_dir = st.session_state.get('temp_dir')
+            if temp_dir and os.path.exists(temp_dir):
+                time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+        except Exception as cleanup_error:
+            st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
                 
             # 임시 디렉토리 정리
             if os.path.exists(temp_dir):  # st.path를 os.path로 변경
