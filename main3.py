@@ -679,7 +679,7 @@ def main():
                         try:
                             db = load_db_with_retry(temp_dir)
                             chain = create_rag_chain(db, selected_product_id)
-                           st.session_state.conversation_chain = chain
+                            st.session_state.conversation_chain = chain
                         except Exception as reconnect_error:
                             st.error(f"DB 재연결 실패: {str(reconnect_error)}")
                         return
@@ -706,14 +706,6 @@ def main():
             
         except Exception as cleanup_error:
             st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        st.error(f"예상치 못한 오류가 발생했습니다: {str(e)}")
-        st.error("자세한 오류 정보:", exc_info=True)
 
 
 if __name__ == "__main__":
