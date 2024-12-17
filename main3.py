@@ -23,26 +23,24 @@ from datetime import datetime
 from langchain.schema.runnable import RunnablePassthrough
 def get_bedrock_client():
     try:
-        # Streamlit Cloud의 secrets에서 가져오기 시도
-        aws_access_key_id = st.secrets.get("aws_access_key_id")
-        aws_secret_access_key = st.secrets.get("aws_secret_access_key")
-    except:
-        # 로컬 환경변수에서 가져오기 시도
-        aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
-        aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-    
-    if not aws_access_key_id or not aws_secret_access_key:
-        raise ValueError("AWS 인증 정보가 설정되지 않았습니다.")
-    
-    session = boto3.Session(
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        region_name="us-west-2"
-    )
-    return session.client(
-        service_name="bedrock-runtime",
-        region_name="us-west-2"
-    )
+        # Streamlit Cloud의 secrets에서 AWS 인증 정보 가져오기
+        aws_access_key_id = st.secrets["aws"]["aws_access_key_id"]
+        aws_secret_access_key = st.secrets["aws"]["aws_secret_access_key"]
+        
+        if not aws_access_key_id or not aws_secret_access_key:
+            raise ValueError("AWS 인증 정보가 비어 있습니다.")
+            
+        session = boto3.Session(
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name="us-west-2"
+        )
+        return session.client(
+            service_name="bedrock-runtime",
+            region_name="us-west-2"
+        )
+    except Exception as e:
+        raise ValueError(f"AWS 인증 실패: {str(e)}")
 def get_current_datetime_with_day():
     now = datetime.now()
     year = now.year
@@ -371,10 +369,9 @@ def main():
         # 디버깅을 위한 추가 정보
         st.error("상세 오류 정보:", exc_info=True)
         return
-
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
         st.error(f"예상치 못한 오류가 발생했습니다: {str(e)}")
-        st.error("자세한 오류 정보")  # exc_info 파라미터 제거
+        st.error("자세한 오류 정보")
