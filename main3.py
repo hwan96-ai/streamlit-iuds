@@ -3,10 +3,6 @@ __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
-# SQLite 초기화
-import sqlite3
-sqlite3.connect(':memory:').close()
-
 # 기본 imports
 import streamlit as st
 import tempfile
@@ -181,13 +177,12 @@ def load_chroma_db(base_path: str):
         import chromadb
         from chromadb.config import Settings
         
-        # 새로운 설정 추가
+        # 설정 수정 - sqlite_database 제거
         chroma_settings = Settings(
             anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True,
-            persist_directory=base_path,
-            sqlite_database=sqlite_path  # SQLite 파일 경로 직접 지정
+            persist_directory=base_path
         )
         
         # 모든 하위 디렉토리와 파일의 권한 설정
@@ -199,15 +194,7 @@ def load_chroma_db(base_path: str):
                 file_path = os.path.join(root, f)
                 os.chmod(file_path, 0o666)
         
-        # 임시 방편: SQLite 연결 테스트
-        import sqlite3
-        try:
-            conn = sqlite3.connect(sqlite_path)
-            conn.close()
-            st.write("SQLite 연결 테스트 성공")
-        except Exception as e:
-            st.error(f"SQLite 연결 테스트 실패: {str(e)}")
-        
+        # ChromaDB 인스턴스 생성
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
