@@ -124,27 +124,50 @@ def load_chroma_db(base_path: str):
             embedding_function=embeddings,
             collection_name="product_qa"  # 컬렉션 이름 지정
         )
-        return db
+
+        # 연결 테스트
+        try:
+            collection_count = len(db.get()['ids'])
+            st.write(f"데이터베이스 내 문서 수: {collection_count}")
+            return db
+        except Exception as e:
+            raise Exception(f"데이터베이스 연결 테스트 실패: {str(e)}")
         
     except Exception as e:
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
+        
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
-        collection = db._collection
-        metadatas = collection.get()['metadatas']
-        
+        # 전체 데이터 가져오기
+        result = db.get()
+        if not result:
+            raise ValueError("데이터베이스에서 데이터를 가져올 수 없습니다.")
+
+        # 메타데이터 처리
         product_info = {}
-        for metadata in metadatas:
-            if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
-                product_uuid = metadata['product_uuid']
-                product_name = metadata['product_name']
-                if product_uuid not in product_info:
-                    product_info[product_uuid] = product_name
-        
+        if 'metadatas' in result and result['metadatas']:
+            for metadata in result['metadatas']:
+                if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
+                    product_uuid = metadata['product_uuid']
+                    product_name = metadata['product_name']
+                    if product_uuid not in product_info:
+                        product_info[product_uuid] = product_name
+
+        if not product_info:
+            raise ValueError("제품 정보를 찾을 수 없습니다.")
+
         return product_info
+        
     except Exception as e:
         st.sidebar.error(f"제품 정보 조회 중 오류 발생: {str(e)}")
+        # 디버깅을 위한 추가 정보
+        st.sidebar.write("DB 정보:", db)
+        try:
+            result = db.get()
+            st.sidebar.write("DB 내용:", result)
+        except Exception as inner_e:
+            st.sidebar.error(f"DB 내용 확인 실패: {str(inner_e)}")
         return {}
 
 def clear_chat_history():
