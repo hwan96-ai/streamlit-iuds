@@ -30,8 +30,8 @@ st.set_page_config(
 )
 
 # S3 관련 설정 (os.getenv 사용)
-BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
-S3_DB_FOLDER = os.getenv('S3_DB_FOLDER')
+BUCKET_NAME = st.getenv('S3_BUCKET_NAME')
+S3_DB_FOLDER = st.getenv('S3_DB_FOLDER')
 
 
 def get_aws_session():
