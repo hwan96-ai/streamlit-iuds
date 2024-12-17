@@ -14,7 +14,7 @@ from langchain.schema.runnable import RunnablePassthrough
 import shutil
 import time
 import boto3
-import st
+
 
 # 환경 변수 로드 직후에 추가
 load_dotenv()
