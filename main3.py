@@ -539,14 +539,14 @@ def main():
                             st.markdown(answers[2])
                             if docs and len(docs) > 2:
                                 with st.expander("참고 문서 3"):
-                                    st.markdown(f"**내용:**\n{docs[2].page_content}") 
-                                    st.markdown("메타데이터:") 
+                                    st.markdown(f"**내용:**\n{docs[2].page_content}")
+                                    st.markdown("**메타데이터:**")
                                     st.json(docs[2].metadata)
-
-                    # 첫 번째 답변을 채팅 히스토리에 저장
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": answers[0]}
-                    )
+                        
+                        # 첫 번째 답변을 채팅 히스토리에 저장
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": answers[0]}
+                        )
                     
                 except Exception as e:
                     st.error(f"응답 생성 중 오류 발생: {str(e)}")
