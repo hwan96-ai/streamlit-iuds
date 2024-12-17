@@ -47,43 +47,77 @@ def get_bedrock_client():
         region_name="us-west-2"
     )
 
+# def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
+#     """S3에서 ChromaDB 파일들을 다운로드"""
+
+#     session = get_aws_session()
+#     s3_client = session.client(
+#         's3',
+
+#     )
+#     # 임시 디렉토리 생성
+#     os.makedirs(local_path, exist_ok=True)
+    
+#     try:
+#         # S3 버킷의 해당 폴더 내 모든 객체 리스팅
+#         paginator = s3_client.get_paginator('list_objects_v2')
+#         pages = paginator.paginate(Bucket=bucket_name, Prefix=s3_folder)
+        
+#         for page in pages:
+#             for obj in page.get('Contents', []):
+#                 # S3 경로에서 상대 경로 추출
+#                 relative_path = obj['Key'][len(s3_folder):].lstrip('/')
+#                 if not relative_path:  # 폴더 자체인 경우 스킵
+#                     continue
+                    
+#                 # 로컬 경로 생성
+#                 local_file_path = os.path.join(local_path, relative_path)
+#                 os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                
+#                 # 파일 다운로드
+#                 s3_client.download_file(
+#                     bucket_name,
+#                     obj['Key'],
+#                     local_file_path
+#                 )
+                
+#     except Exception as e:
+#         raise Exception(f"S3에서 DB 다운로드 중 오류 발생: {str(e)}")
 def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
     """S3에서 ChromaDB 파일들을 다운로드"""
-
     session = get_aws_session()
-    s3_client = session.client(
-        's3',
-
-    )
-    # 임시 디렉토리 생성
+    s3_client = session.client('s3')
+    
+    # 임시 디렉토리 생성 및 권한 설정
     os.makedirs(local_path, exist_ok=True)
+    os.chmod(local_path, 0o777)
     
     try:
-        # S3 버킷의 해당 폴더 내 모든 객체 리스팅
+        # 디버깅 정보
+        st.write(f"S3 다운로드 시작: {bucket_name}/{s3_folder}")
+        
         paginator = s3_client.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=s3_folder)
         
+        downloaded_files = []
         for page in pages:
             for obj in page.get('Contents', []):
-                # S3 경로에서 상대 경로 추출
                 relative_path = obj['Key'][len(s3_folder):].lstrip('/')
-                if not relative_path:  # 폴더 자체인 경우 스킵
+                if not relative_path:
                     continue
-                    
-                # 로컬 경로 생성
+                
                 local_file_path = os.path.join(local_path, relative_path)
                 os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
                 
-                # 파일 다운로드
-                s3_client.download_file(
-                    bucket_name,
-                    obj['Key'],
-                    local_file_path
-                )
-                
+                s3_client.download_file(bucket_name, obj['Key'], local_file_path)
+                os.chmod(local_file_path, 0o666)
+                downloaded_files.append(local_file_path)
+        
+        st.write(f"다운로드된 파일 목록: {downloaded_files}")
+        
     except Exception as e:
+        st.error(f"S3 다운로드 상세 오류: {str(e)}")
         raise Exception(f"S3에서 DB 다운로드 중 오류 발생: {str(e)}")
-
 def get_current_datetime_with_day():
     now = datetime.now()
     year = now.year
@@ -119,30 +153,56 @@ def load_chroma_db(base_path: str):
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
     try:
+        # 디버깅을 위한 정보 출력
+        st.write(f"DB 경로의 파일 목록: {os.listdir(base_path)}")
+        st.write(f"DB 경로 권한: {oct(os.stat(base_path).st_mode)[-3:]}")
+        
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v1",
             client=bedrock_runtime
         )
         
-        # ChromaDB 설정 추가
+        # ChromaDB 설정
         import chromadb
         from chromadb.config import Settings
         
+        # ChromaDB 설정에서 추가 옵션 설정
         chroma_settings = Settings(
             anonymized_telemetry=False,
+            allow_reset=True,
             is_persistent=True,
             persist_directory=base_path
         )
+        
+        # 임시 해결책: 하위 디렉토리에 대한 권한도 설정
+        for root, dirs, files in os.walk(base_path):
+            for d in dirs:
+                dir_path = os.path.join(root, d)
+                os.chmod(dir_path, 0o777)
+            for f in files:
+                file_path = os.path.join(root, f)
+                os.chmod(file_path, 0o666)
         
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
             client_settings=chroma_settings
         )
+        
+        # 데이터베이스 연결 확인
+        try:
+            collection = db._collection
+            count = collection.count()
+            st.write(f"데이터베이스 연결 성공: {count}개의 문서 확인")
+        except Exception as e:
+            st.error(f"데이터베이스 연결 확인 실패: {str(e)}")
+        
         return db
     except Exception as e:
+        st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
+        
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
