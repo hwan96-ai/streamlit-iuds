@@ -1,6 +1,6 @@
+__import__('pysqlite3')
 import sys
-import pysqlite3
-sys.modules['sqlite3'] = pysqlite3
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import tempfile
 import os 
@@ -85,7 +85,7 @@ def get_current_datetime_with_day():
 
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
-    if not os.path.exists(base_path):
+    if not os.path.exists(base_path):  # os.path 사용
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
     try:
@@ -95,28 +95,14 @@ def load_chroma_db(base_path: str):
             client=bedrock_runtime
         )
         
-        # 모든 하위 디렉토리에 대한 권한 확인
-        for root, dirs, files in os.walk(base_path):
-            for d in dirs:
-                dir_path = os.path.join(root, d)
-                os.chmod(dir_path, 0o777)
-            for f in files:
-                file_path = os.path.join(root, f)
-                os.chmod(file_path, 0o777)
-        
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
         )
-        
-        # 연결 테스트
-        db._collection.count()
-        
         return db
-        
     except Exception as e:
-        print(f"ChromaDB 로드 오류: {str(e)}")
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
+
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
@@ -287,39 +273,16 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 def main():
     st.title("상품 문의 챗봇 🤖")
     
-    # 세션 상태 초기화
-    if 'db' not in st.session_state:
-        try:
-            # 임시 디렉토리 생성
-            temp_dir = tempfile.mkdtemp(prefix="chromadb_")
-            
-            # S3에서 DB 다운로드
-            with st.spinner("데이터베이스를 불러오는 중..."):
-                download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
-            
-            # 임시 디렉토리의 모든 파일에 대한 권한 설정
-            for root, dirs, files in os.walk(temp_dir):
-                for d in dirs:
-                    os.chmod(os.path.join(root, d), 0o777)
-                for f in files:
-                    os.chmod(os.path.join(root, f), 0o777)
-            
-            # ChromaDB 로드
-            db = load_chroma_db(temp_dir)
-            
-            # 세션 상태에 저장
-            st.session_state.db = db
-            st.session_state.temp_dir = temp_dir
-            
-        except Exception as e:
-            st.error(f"데이터베이스 초기화 중 오류 발생: {str(e)}")
-            if 'temp_dir' in locals() and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            return
+    temp_dir = tempfile.mkdtemp()
+    db = None
     
     try:
-        # 저장된 DB 인스턴스 사용
-        db = st.session_state.db
+        # S3에서 DB 다운로드
+        with st.spinner("데이터베이스를 불러오는 중..."):
+            download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
+        
+        # DB 로드
+        db = load_chroma_db(temp_dir)
         product_info = get_product_info_from_db(db)
         
         if not product_info:
@@ -350,6 +313,7 @@ def main():
             st.info(f"현재 선택: {selected_name}")
         
         # 세션 상태 초기화 또는 업데이트
+        # 세션 상태 초기화 또는 업데이트 부분 수정
         if ('conversation_chain' not in st.session_state or 
             'current_product_id' not in st.session_state or 
             st.session_state.current_product_id != selected_product_id):
@@ -439,7 +403,6 @@ def main():
                         
                         # 첫 번째 답변을 채팅 히스토리에 저장
                         st.session_state.messages.append(
-
                             {"role": "assistant", "content": answers[0]}
                         )
                         
@@ -452,16 +415,24 @@ def main():
         return
         
     finally:
-        # 세션이 리셋될 때만 임시 디렉토리 정리
-        if st.session_state.get('_is_new_session', True):
-            try:
-                temp_dir = st.session_state.get('temp_dir')
-                if temp_dir and os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            except Exception as cleanup_error:
-                st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
-            finally:
-                st.session_state['_is_new_session'] = False
+        # 리소스 정리
+        try:
+            # ChromaDB 정리
+            if db is not None:
+                try:
+                    if hasattr(db, '_collection'):
+                        db._collection.count()  # 연결 확인
+                except Exception:
+                    pass  # 이미 연결이 닫혀있는 경우 무시
+                
+            # 임시 디렉토리 정리
+            if os.path.exists(temp_dir):  # st.path를 os.path로 변경
+                time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+        except Exception as cleanup_error:
+            st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
+
 
 if __name__ == "__main__":
     try:
