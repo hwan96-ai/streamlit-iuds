@@ -85,7 +85,7 @@ def get_current_datetime_with_day():
 
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
-    if not os.path.exists(base_path):  # os.path 사용
+    if not os.path.exists(base_path):
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
     try:
@@ -95,9 +95,18 @@ def load_chroma_db(base_path: str):
             client=bedrock_runtime
         )
         
+        # ChromaDB 설정 추가
+        from chromadb.config import Settings
+        chroma_settings = Settings(
+            anonymized_telemetry=False,
+            is_persistent=True,
+            persist_directory=base_path
+        )
+        
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
+            client_settings=chroma_settings,
         )
         return db
     except Exception as e:
