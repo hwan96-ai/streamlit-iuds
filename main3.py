@@ -539,7 +539,9 @@ def main():
                             st.markdown(answers[2])
                             if docs and len(docs) > 2:
                                 with st.expander("참고 문서 3"):
-                                    st.markdown(f"**내용:**\n{docs[2].page_content}") st.markdown("메타데이터:") st.json(docs[2].metadata)
+                                    st.markdown(f"**내용:**\n{docs[2].page_content}") 
+                                    st.markdown("메타데이터:") 
+                                    st.json(docs[2].metadata)
 
                     # 첫 번째 답변을 채팅 히스토리에 저장
                     st.session_state.messages.append(
