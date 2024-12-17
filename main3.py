@@ -14,12 +14,6 @@ from langchain.schema.runnable import RunnablePassthrough
 import shutil
 import time
 import boto3
-
-
-
-
-
-
 # 페이지 설정
 st.set_page_config(
     page_title="상품 문의 챗봇",
@@ -28,20 +22,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# secrets에서 값을 가져오기 전에 디버깅을 위한 출력 추가
+# S3 관련 설정 (직접 secrets에서 가져오기)
 try:
-    BUCKET_NAME = st.secrets["aws_credentials"]["S3_BUCKET_NAME"]
-    S3_DB_FOLDER = st.secrets["aws_credentials"]["S3_DB_FOLDER"]
+    BUCKET_NAME = st.secrets.S3_BUCKET_NAME
+    S3_DB_FOLDER = st.secrets.S3_DB_FOLDER
+    AWS_ACCESS_KEY_ID = st.secrets.AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY = st.secrets.AWS_SECRET_ACCESS_KEY
+    AWS_REGION = st.secrets.AWS_REGION
 except Exception as e:
-    st.error("Secrets 로딩 중 오류 발생")
-    st.write("Available secrets:", st.secrets.list())
-    raise e
+    st.error("Secrets 설정을 확인해주세요.")
+    st.stop()
 
 def get_aws_session():
     return boto3.Session(
-        aws_access_key_id=st.secrets["aws_credentials"]["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=st.secrets["aws_credentials"]["AWS_SECRET_ACCESS_KEY"],
-        region_name=st.secrets["aws_credentials"]["AWS_REGION"]
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name=AWS_REGION
     )
 def get_bedrock_client():
     session = get_aws_session()
