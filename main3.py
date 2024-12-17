@@ -83,26 +83,58 @@ def get_current_datetime_with_day():
     weekday = now.strftime("%A")
     return f"{year}년{month}월{day}일{weekday} {hour}시{minute}분"
 
+# def load_chroma_db(base_path: str):
+#     """Chroma DB 로드"""
+#     if not os.path.exists(base_path):  # os.path 사용
+#         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
+    
+#     try:
+#         bedrock_runtime = get_bedrock_client()
+#         embeddings = BedrockEmbeddings(
+#             model_id="amazon.titan-embed-text-v1",
+#             client=bedrock_runtime
+#         )
+        
+#         db = Chroma(
+#             persist_directory=base_path,
+#             embedding_function=embeddings,
+#         )
+#         return db
+#     except Exception as e:
+#         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
-    if not os.path.exists(base_path):  # os.path 사용
-        raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
-    
     try:
+        # 임시 디렉토리 생성 및 권한 설정
+        os.makedirs(base_path, exist_ok=True)
+        os.chmod(base_path, 0o777)
+        
+        # ChromaDB 설정
+        settings = {
+            "persist_directory": base_path,
+            "anonymized_telemetry": False,
+            "allow_reset": True
+        }
+        
+        # Bedrock 클라이언트 설정
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v1",
             client=bedrock_runtime
         )
         
+        # ChromaDB 인스턴스 생성
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
+            collection_metadata={"hnsw:space": "cosine"},
+            client_settings=settings
         )
+        
         return db
     except Exception as e:
-        raise Exception(f"ChromaDB 로드 실패: {str(e)}")
-
+        st.error(f"ChromaDB 로드 실패: {str(e)}")
+        raise
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
@@ -273,16 +305,44 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 def main():
     st.title("상품 문의 챗봇 🤖")
     
-    temp_dir = tempfile.mkdtemp()
+    # 현재 작업 디렉토리 내에 임시 디렉토리 생성
+    temp_dir = os.path.join(os.getcwd(), "temp_chroma_db")
+    os.makedirs(temp_dir, exist_ok=True)
+    os.chmod(temp_dir, 0o777)
+    
     db = None
     
     try:
         # S3에서 DB 다운로드
         with st.spinner("데이터베이스를 불러오는 중..."):
-            download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
+            try:
+                download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
+                st.success("데이터베이스 다운로드 완료")
+                
+                # 디버깅 정보 출력
+                st.write("임시 디렉토리 경로:", temp_dir)
+                st.write("디렉토리 내용:", os.listdir(temp_dir))
+                
+                # 파일 권한 확인
+                for root, dirs, files in os.walk(temp_dir):
+                    for d in dirs:
+                        os.chmod(os.path.join(root, d), 0o777)
+                    for f in files:
+                        os.chmod(os.path.join(root, f), 0o666)
+                
+            except Exception as e:
+                st.error(f"데이터베이스 다운로드 실패: {str(e)}")
+                return
         
         # DB 로드
-        db = load_chroma_db(temp_dir)
+        try:
+            db = load_chroma_db(temp_dir)
+            st.success("데이터베이스 로드 완료")
+        except Exception as e:
+            st.error(f"데이터베이스 로드 실패: {str(e)}")
+            return
+        
+        # 제품 정보 가져오기
         product_info = get_product_info_from_db(db)
         
         if not product_info:
@@ -313,7 +373,6 @@ def main():
             st.info(f"현재 선택: {selected_name}")
         
         # 세션 상태 초기화 또는 업데이트
-        # 세션 상태 초기화 또는 업데이트 부분 수정
         if ('conversation_chain' not in st.session_state or 
             'current_product_id' not in st.session_state or 
             st.session_state.current_product_id != selected_product_id):
@@ -401,6 +460,7 @@ def main():
                                     st.markdown("**메타데이터:**")
                                     st.json(docs[2].metadata)
                         
+
                         # 첫 번째 답변을 채팅 히스토리에 저장
                         st.session_state.messages.append(
                             {"role": "assistant", "content": answers[0]}
@@ -416,23 +476,20 @@ def main():
         
     finally:
         # 리소스 정리
+        if db is not None:
+            try:
+                if hasattr(db, '_collection'):
+                    db._collection.count()
+            except Exception:
+                pass
+            
+        # 임시 파일 정리
         try:
-            # ChromaDB 정리
-            if db is not None:
-                try:
-                    if hasattr(db, '_collection'):
-                        db._collection.count()  # 연결 확인
-                except Exception:
-                    pass  # 이미 연결이 닫혀있는 경우 무시
-                
-            # 임시 디렉토리 정리
-            if os.path.exists(temp_dir):  # st.path를 os.path로 변경
-                time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
+            time.sleep(2)  # 파일 사용이 완전히 끝날 때까지 대기
+            if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                
         except Exception as cleanup_error:
             st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
-
 
 if __name__ == "__main__":
     try:
