@@ -29,15 +29,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# S3 관련 설정
-BUCKET_NAME = st.getenv('S3_BUCKET_NAME')
-S3_DB_FOLDER = st.getenv('S3_DB_FOLDER')
+# S3 관련 설정 (os.getenv 사용)
+BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
+S3_DB_FOLDER = os.getenv('S3_DB_FOLDER')
+
 
 def get_aws_session():
     return boto3.Session(
-        aws_access_key_id=st.environ.get('aws_access_key_id'),
-        aws_secret_access_key=st.environ.get('aws_secret_access_key'),
-        region_name=st.environ.get('region')
+        aws_access_key_id=os.environ.get('aws_access_key_id'),
+        aws_secret_access_key=os.environ.get('aws_secret_access_key'),
+        region_name=os.environ.get('region')
     )
 
 def get_bedrock_client():
@@ -83,7 +84,7 @@ def get_current_datetime_with_day():
 
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
-    if not st.path.exists(base_path):
+    if not os.path.exists(base_path):  # os.path 사용
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
     try:
@@ -424,7 +425,7 @@ def main():
                     pass  # 이미 연결이 닫혀있는 경우 무시
                 
             # 임시 디렉토리 정리
-            if st.path.exists(temp_dir):
+            if os.path.exists(temp_dir):  # st.path를 os.path로 변경
                 time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 
