@@ -313,14 +313,19 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 def main():
     st.title("상품 문의 챗봇 🤖")
     
+    # 임시 디렉토리 생성 및 권한 설정
     temp_dir = tempfile.mkdtemp()
+    os.chmod(temp_dir, 0o777)  # 모든 사용자에게 읽기/쓰기 권한 부여
     db = None
     
     try:
+        # 디버깅을 위한 정보 출력
+        st.write(f"임시 디렉토리 경로: {temp_dir}")
+        st.write(f"임시 디렉토리 존재 여부: {os.path.exists(temp_dir)}")
+        
         # S3에서 DB 다운로드
         with st.spinner("데이터베이스를 불러오는 중..."):
             download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
-        
         # DB 로드
         db = load_chroma_db(temp_dir)
         product_info = get_product_info_from_db(db)
