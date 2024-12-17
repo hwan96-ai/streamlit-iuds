@@ -3,7 +3,7 @@ import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import tempfile
-
+import os 
 from dotenv import load_dotenv
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -48,41 +48,28 @@ def get_bedrock_client():
     )
 
 def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
-    """S3에서 ChromaDB 파일들을 다운로드"""
-
     session = get_aws_session()
-    s3_client = session.client(
-        's3',
-
-    )
-    # 임시 디렉토리 생성
-    st.makedirs(local_path, exist_ok=True)
+    s3_client = session.client('s3')
+    os.makedirs(local_path, exist_ok=True)  # Use os.makedirs
     
     try:
-        # S3 버킷의 해당 폴더 내 모든 객체 리스팅
         paginator = s3_client.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=s3_folder)
         
         for page in pages:
             for obj in page.get('Contents', []):
-                # S3 경로에서 상대 경로 추출
                 relative_path = obj['Key'][len(s3_folder):].lstrip('/')
-                if not relative_path:  # 폴더 자체인 경우 스킵
+                if not relative_path:
                     continue
                     
-                # 로컬 경로 생성
-                local_file_path = st.path.join(local_path, relative_path)
-                st.makedirs(st.path.dirname(local_file_path), exist_ok=True)
+                local_file_path = os.path.join(local_path, relative_path)  # Use os.path.join
+                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)  # Use os.makedirs
                 
-                # 파일 다운로드
                 s3_client.download_file(
                     bucket_name,
                     obj['Key'],
                     local_file_path
                 )
-                
-    except Exception as e:
-        raise Exception(f"S3에서 DB 다운로드 중 오류 발생: {str(e)}")
 
 def get_current_datetime_with_day():
     now = datetime.now()
