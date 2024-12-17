@@ -2,8 +2,8 @@ __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
+import boto3  
 
-# 가장 먼저 페이지 설정을 해야 합니다
 st.set_page_config(
     page_title="상품 문의 챗봇",
     page_icon="🤖",
@@ -366,4 +366,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"예상치 못한 오류가 발생했습니다: {str(e)}")
-        st.error("자세한 오류 정보:", exc_info=True)
+        st.error("자세한 오류 정보:")  # exc_info 파라미터 제거
