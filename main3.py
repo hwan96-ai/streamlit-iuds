@@ -1,9 +1,5 @@
-# SQLite 버전 문제 해결을 위한 코드
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 import streamlit as st
-import boto3
 import tempfile
 import os
 from dotenv import load_dotenv
@@ -13,13 +9,14 @@ from langchain_aws import BedrockEmbeddings, ChatBedrock
 from langchain_chroma import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
-import traceback
 import shutil
 import time
-from aws import get_bedrock_client,get_aws_session
+import boto3
+import os
 
 # 환경 변수 로드 직후에 추가
 load_dotenv()
+
 
 
 # 페이지 설정
@@ -33,6 +30,20 @@ st.set_page_config(
 # S3 관련 설정
 BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
 S3_DB_FOLDER = os.getenv('S3_DB_FOLDER')
+
+def get_aws_session():
+    return boto3.Session(
+        aws_access_key_id=os.environ.get('aws_access_key_id'),
+        aws_secret_access_key=os.environ.get('aws_secret_access_key'),
+        region_name=os.environ.get('region')
+    )
+
+def get_bedrock_client():
+    session = get_aws_session()
+    return session.client(
+        service_name="bedrock-runtime",
+        region_name="us-west-2"
+    )
 
 def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
     """S3에서 ChromaDB 파일들을 다운로드"""
