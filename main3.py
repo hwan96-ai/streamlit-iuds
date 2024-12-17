@@ -189,12 +189,8 @@ def load_chroma_db(base_path: str):
             anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True,
-            persist_directory=base_path,
-            is_read_only=True  # 읽기 전용 모드 추가
+            persist_directory=base_path
         )
-        
-        # ChromaDB 클라이언트 생성
-        client = chromadb.Client(chroma_settings)
         
         # 모든 하위 디렉토리와 파일의 권한 설정
         for root, dirs, files in os.walk(base_path):
@@ -205,11 +201,11 @@ def load_chroma_db(base_path: str):
                 file_path = os.path.join(root, f)
                 os.chmod(file_path, 0o666)
         
-        # Chroma 인스턴스 생성
+        # ChromaDB 인스턴스 생성
         db = Chroma(
-            client=client,
             persist_directory=base_path,
-            embedding_function=embeddings
+            embedding_function=embeddings,
+            client_settings=chroma_settings
         )
         
         # 데이터베이스 연결 확인
