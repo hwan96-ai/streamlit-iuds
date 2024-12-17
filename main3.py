@@ -244,13 +244,14 @@ def load_chroma_db(base_path: str):
         import chromadb
         from chromadb.config import Settings
         
-        # SQLite 설정 추가
-        chroma_settings = Settings(
-            anonymized_telemetry=False,
-            allow_reset=True,
-            is_persistent=True,
-            persist_directory=base_path,
-            chroma_db_impl="duckdb+parquet"  # SQLite 대신 DuckDB 사용
+        # 새로운 ChromaDB 클라이언트 설정
+        client = chromadb.PersistentClient(
+            path=base_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+                is_persistent=True
+            )
         )
         
         # 모든 하위 디렉토리와 파일의 권한 설정
@@ -264,9 +265,9 @@ def load_chroma_db(base_path: str):
         
         # ChromaDB 인스턴스 생성
         db = Chroma(
-            persist_directory=base_path,
+            client=client,
             embedding_function=embeddings,
-            client_settings=chroma_settings
+            collection_name="default_collection"  # 컬렉션 이름 지정
         )
         
         # 데이터베이스 연결 확인
@@ -277,7 +278,7 @@ def load_chroma_db(base_path: str):
         return db
     except Exception as e:
         st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
-        raise Exception(f"ChromaDB 로드 실패: {str(e)}")     
+        raise Exception(f"ChromaDB 로드 실패: {str(e)}")
         
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
