@@ -220,24 +220,25 @@ def get_current_datetime_with_day():
 #         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 
         
-# def get_product_info_from_db(db: Chroma):
-#     """Chroma DB에서 제품 정보 가져오기"""
-#     try:
-#         collection = db._collection
-#         metadatas = collection.get()['metadatas']
+def get_product_info_from_db(db: Chroma):
+    """Chroma DB에서 제품 정보 가져오기"""
+    try:
+        collection = db._collection
+        metadatas = collection.get()['metadatas']
         
-#         product_info = {}
-#         for metadata in metadatas:
-#             if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
-#                 product_uuid = metadata['product_uuid']
-#                 product_name = metadata['product_name']
-#                 if product_uuid not in product_info:
-#                     product_info[product_uuid] = product_name
+        product_info = {}
+        for metadata in metadatas:
+            if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
+                product_uuid = metadata['product_uuid']
+                product_name = metadata['product_name']
+                if product_uuid not in product_info:
+                    product_info[product_uuid] = product_name
         
-#         return product_info
-#     except Exception as e:
-#         st.sidebar.error(f"제품 정보 조회 중 오류 발생: {str(e)}")
-#         return {}
+        return product_info
+    except Exception as e:
+        st.sidebar.error(f"제품 정보 조회 중 오류 발생: {str(e)}")
+        return {}
+
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
     if not os.path.exists(base_path):
