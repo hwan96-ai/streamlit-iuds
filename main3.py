@@ -139,26 +139,26 @@ def get_current_datetime_with_day():
     weekday = now.strftime("%A")
     return f"{year}년{month}월{day}일{weekday} {hour}시{minute}분"
 
-# def load_chroma_db(base_path: str):
-#     """Chroma DB 로드"""
-#     if not os.path.exists(base_path):
-#         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
+def load_chroma_db(base_path: str):
+    """Chroma DB 로드"""
+    if not os.path.exists(base_path):
+        raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
-#     try:
-#         bedrock_runtime = get_bedrock_client()
-#         embeddings = BedrockEmbeddings(
-#             model_id="amazon.titan-embed-text-v1",
-#             client=bedrock_runtime
-#         )
+    try:
+        bedrock_runtime = get_bedrock_client()
+        embeddings = BedrockEmbeddings(
+            model_id="amazon.titan-embed-text-v1",
+            client=bedrock_runtime
+        )
         
-#         db = Chroma(
-#             persist_directory=base_path,
-#             embedding_function=embeddings,
+        db = Chroma(
+            persist_directory=base_path,
+            embedding_function=embeddings,
 
-#         )
-#         return db
-#     except Exception as e:
-#         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
+        )
+        return db
+    except Exception as e:
+        raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 
 # def load_chroma_db(base_path: str):
 #     """Chroma DB 로드"""
@@ -219,146 +219,146 @@ def get_current_datetime_with_day():
 #     except Exception as e:
 #         st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
 #         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
-def load_chroma_db(base_path: str):
-    """Chroma DB 로드"""
-    if not os.path.exists(base_path):
-        raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
+# def load_chroma_db(base_path: str):
+#     """Chroma DB 로드"""
+#     if not os.path.exists(base_path):
+#         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
-    try:
-        # 디버깅을 위한 정보 출력
-        st.write(f"DB 경로의 파일 목록: {os.listdir(base_path)}")
-        st.write(f"DB 경로 권한: {oct(os.stat(base_path).st_mode)[-3:]}")
+#     try:
+#         # 디버깅을 위한 정보 출력
+#         st.write(f"DB 경로의 파일 목록: {os.listdir(base_path)}")
+#         st.write(f"DB 경로 권한: {oct(os.stat(base_path).st_mode)[-3:]}")
         
-        bedrock_runtime = get_bedrock_client()
-        embeddings = BedrockEmbeddings(
-            model_id="amazon.titan-embed-text-v1",
-            client=bedrock_runtime
-        )
+#         bedrock_runtime = get_bedrock_client()
+#         embeddings = BedrockEmbeddings(
+#             model_id="amazon.titan-embed-text-v1",
+#             client=bedrock_runtime
+#         )
         
-        # ChromaDB 설정
-        from chromadb.config import Settings
+#         # ChromaDB 설정
+#         from chromadb.config import Settings
         
-        chroma_settings = Settings(
-            anonymized_telemetry=False,
-            allow_reset=True,
-            is_persistent=True,
-            persist_directory=base_path
-        )
+#         chroma_settings = Settings(
+#             anonymized_telemetry=False,
+#             allow_reset=True,
+#             is_persistent=True,
+#             persist_directory=base_path
+#         )
         
-        # ChromaDB 인스턴스 생성
-        db = Chroma(
-            persist_directory=base_path,
-            embedding_function=embeddings,
-            # client_settings=chroma_settings
-        )
+#         # ChromaDB 인스턴스 생성
+#         db = Chroma(
+#             persist_directory=base_path,
+#             embedding_function=embeddings,
+#             # client_settings=chroma_settings
+#         )
         
-        # 데이터베이스 연결 확인
-        collection = db._collection
-        count = collection.count()
-        st.write(f"데이터베이스 연결 성공: {count}개의 문서 확인")
+#         # 데이터베이스 연결 확인
+#         collection = db._collection
+#         count = collection.count()
+#         st.write(f"데이터베이스 연결 성공: {count}개의 문서 확인")
         
-        return db
+#         return db
         
-    except Exception as e:
-        st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
-        raise Exception(f"ChromaDB 로드 실패: {str(e)}")
+#     except Exception as e:
+#         st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
+#         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 
-def set_sqlite_permissions(base_path: str):
-    """SQLite 파일의 권한을 설정하는 함수"""
-    try:
-        sqlite_path = os.path.join(base_path, "chroma.sqlite3")
-        if os.path.exists(sqlite_path):
-            os.chmod(sqlite_path, 0o666)
+# def set_sqlite_permissions(base_path: str):
+#     """SQLite 파일의 권한을 설정하는 함수"""
+#     try:
+#         sqlite_path = os.path.join(base_path, "chroma.sqlite3")
+#         if os.path.exists(sqlite_path):
+#             os.chmod(sqlite_path, 0o666)
             
-        # 상위 디렉토리 권한도 설정
-        os.chmod(base_path, 0o777)
-        st.write(f"SQLite 권한 설정 완료: {sqlite_path}")
-    except Exception as e:
-        st.error(f"SQLite 권한 설정 실패: {str(e)}")
+#         # 상위 디렉토리 권한도 설정
+#         os.chmod(base_path, 0o777)
+#         st.write(f"SQLite 권한 설정 완료: {sqlite_path}")
+#     except Exception as e:
+#         st.error(f"SQLite 권한 설정 실패: {str(e)}")
 
-def cleanup_temp_dir(temp_dir: str):
-    """임시 디렉토리를 안전하게 정리하는 함수"""
-    try:
-        if os.path.exists(temp_dir):
-            time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 대기
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            st.write(f"임시 디렉토리 정리 완료: {temp_dir}")
-    except Exception as e:
-        st.warning(f"임시 디렉토리 정리 실패: {str(e)}")
+# def cleanup_temp_dir(temp_dir: str):
+#     """임시 디렉토리를 안전하게 정리하는 함수"""
+#     try:
+#         if os.path.exists(temp_dir):
+#             time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 대기
+#             shutil.rmtree(temp_dir, ignore_errors=True)
+#             st.write(f"임시 디렉토리 정리 완료: {temp_dir}")
+#     except Exception as e:
+#         st.warning(f"임시 디렉토리 정리 실패: {str(e)}")
 
-def load_db_with_retry(base_path: str, max_retries=3):
-    """재시도 로직이 포함된 DB 로드 함수"""
-    for attempt in range(max_retries):
-        try:
-            st.write(f"DB 로드 시도 {attempt + 1}/{max_retries}")
+# def load_db_with_retry(base_path: str, max_retries=3):
+#     """재시도 로직이 포함된 DB 로드 함수"""
+#     for attempt in range(max_retries):
+#         try:
+#             st.write(f"DB 로드 시도 {attempt + 1}/{max_retries}")
             
-            # SQLite 파일 권한 재설정
-            sqlite_path = os.path.join(base_path, "chroma.sqlite3")
-            if os.path.exists(sqlite_path):
-                os.chmod(sqlite_path, 0o666)
+#             # SQLite 파일 권한 재설정
+#             sqlite_path = os.path.join(base_path, "chroma.sqlite3")
+#             if os.path.exists(sqlite_path):
+#                 os.chmod(sqlite_path, 0o666)
             
-            # 현재 디렉토리의 권한만 설정
-            os.chmod(base_path, 0o777)
+#             # 현재 디렉토리의 권한만 설정
+#             os.chmod(base_path, 0o777)
             
-            # 하위 디렉토리 권한 설정
-            for root, dirs, files in os.walk(base_path):
-                for d in dirs:
-                    dir_path = os.path.join(root, d)
-                    try:
-                        os.chmod(dir_path, 0o777)
-                    except Exception:
-                        pass
-                for f in files:
-                    file_path = os.path.join(root, f)
-                    try:
-                        os.chmod(file_path, 0o666)
-                    except Exception:
-                        pass
+#             # 하위 디렉토리 권한 설정
+#             for root, dirs, files in os.walk(base_path):
+#                 for d in dirs:
+#                     dir_path = os.path.join(root, d)
+#                     try:
+#                         os.chmod(dir_path, 0o777)
+#                     except Exception:
+#                         pass
+#                 for f in files:
+#                     file_path = os.path.join(root, f)
+#                     try:
+#                         os.chmod(file_path, 0o666)
+#                     except Exception:
+#                         pass
             
-            # DB 로드
-            db = load_chroma_db(base_path)
+#             # DB 로드
+#             db = load_chroma_db(base_path)
             
-            # 연결 테스트
-            if verify_db_connection(db):
-                return db
-            time.sleep(1)
+#             # 연결 테스트
+#             if verify_db_connection(db):
+#                 return db
+#             time.sleep(1)
             
-        except Exception as e:
-            st.error(f"DB 로드 시도 {attempt + 1} 실패: {str(e)}")
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(1)
+#         except Exception as e:
+#             st.error(f"DB 로드 시도 {attempt + 1} 실패: {str(e)}")
+#             if attempt == max_retries - 1:
+#                 raise
+#             time.sleep(1)
 
-def verify_db_connection(db: Chroma):
-    """데이터베이스 연결 상태를 확인하는 함수"""
-    try:
-        if db is None:
-            return False
-        collection = db._collection
-        count = collection.count()
-        st.write(f"DB 연결 확인: {count}개의 문서 존재")
-        return count > 0
-    except Exception as e:
-        st.error(f"DB 연결 확인 실패: {str(e)}")
-        return False
-def get_product_info_from_db(db: Chroma):
-    """Chroma DB에서 제품 정보 가져오기"""
-    try:
-        collection = db._collection
-        metadatas = collection.get()['metadatas']
+# def verify_db_connection(db: Chroma):
+#     """데이터베이스 연결 상태를 확인하는 함수"""
+#     try:
+#         if db is None:
+#             return False
+#         collection = db._collection
+#         count = collection.count()
+#         st.write(f"DB 연결 확인: {count}개의 문서 존재")
+#         return count > 0
+#     except Exception as e:
+#         st.error(f"DB 연결 확인 실패: {str(e)}")
+#         return False
+# def get_product_info_from_db(db: Chroma):
+#     """Chroma DB에서 제품 정보 가져오기"""
+#     try:
+#         collection = db._collection
+#         metadatas = collection.get()['metadatas']
         
-        product_info = {}
-        for metadata in metadatas:
-            if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
-                product_uuid = metadata['product_uuid']
-                product_name = metadata['product_name']
-                if product_uuid not in product_info:
-                    product_info[product_uuid] = product_name
+#         product_info = {}
+#         for metadata in metadatas:
+#             if metadata and 'product_uuid' in metadata and 'product_name' in metadata:
+#                 product_uuid = metadata['product_uuid']
+#                 product_name = metadata['product_name']
+#                 if product_uuid not in product_info:
+#                     product_info[product_uuid] = product_name
         
-        return product_info
-    except Exception as e:
-        st.sidebar.error(f"제품 정보 조회 중 오류 발생: {str(e)}")
-        return {}
+#         return product_info
+#     except Exception as e:
+#         st.sidebar.error(f"제품 정보 조회 중 오류 발생: {str(e)}")
+#         return {}
 
 # def load_chroma_db(base_path: str):
 #     """Chroma DB 로드"""
@@ -570,25 +570,25 @@ def create_rag_chain(db: Chroma, product_uuid: str):
     )
 
     return chain
-def check_file_permissions(temp_dir):
-    sqlite_path = os.path.join(temp_dir, "chroma.sqlite3")
-    if os.path.exists(sqlite_path):
-        st.write(f"SQLite DB 소유자: {os.stat(sqlite_path).st_uid}")
-        st.write(f"현재 프로세스 UID: {os.getuid()}")
-        st.write(f"파일 권한: {oct(os.stat(sqlite_path).st_mode)}")
-def clean_lock_files(temp_dir):
-    lock_file = os.path.join(temp_dir, "chroma.sqlite3-journal")
-    if os.path.exists(lock_file):
-        try:
-            os.remove(lock_file)
-            st.write("Lock 파일 제거됨")
-        except Exception as e:
-            st.write(f"Lock 파일 제거 실패: {e}")
-def verify_path_permissions(temp_dir):
-    current = temp_dir
-    while current != '/':
-        st.write(f"디렉토리 {current} 권한: {oct(os.stat(current).st_mode)}")
-        current = os.path.dirname(current)        
+# def check_file_permissions(temp_dir):
+#     sqlite_path = os.path.join(temp_dir, "chroma.sqlite3")
+#     if os.path.exists(sqlite_path):
+#         st.write(f"SQLite DB 소유자: {os.stat(sqlite_path).st_uid}")
+#         st.write(f"현재 프로세스 UID: {os.getuid()}")
+#         st.write(f"파일 권한: {oct(os.stat(sqlite_path).st_mode)}")
+# def clean_lock_files(temp_dir):
+#     lock_file = os.path.join(temp_dir, "chroma.sqlite3-journal")
+#     if os.path.exists(lock_file):
+#         try:
+#             os.remove(lock_file)
+#             st.write("Lock 파일 제거됨")
+#         except Exception as e:
+#             st.write(f"Lock 파일 제거 실패: {e}")
+# def verify_path_permissions(temp_dir):
+#     current = temp_dir
+#     while current != '/':
+#         st.write(f"디렉토리 {current} 권한: {oct(os.stat(current).st_mode)}")
+#         current = os.path.dirname(current)        
 def main():
     st.title("상품 문의 챗봇 🤖")
     
@@ -599,9 +599,9 @@ def main():
     try:
                 # 진단 정보 출력
         st.write("=== 진단 정보 ===")
-        check_file_permissions(temp_dir)
-        verify_path_permissions(temp_dir)
-        clean_lock_files(temp_dir)
+        # check_file_permissions(temp_dir)
+        # verify_path_permissions(temp_dir)
+        # clean_lock_files(temp_dir)
         # SQLite 권한 설정
         set_sqlite_permissions(temp_dir)
         
