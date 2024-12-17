@@ -623,10 +623,13 @@ def main():
                                 # RAG 체인 재생성
                                 chain = create_rag_chain(db, selected_product_id)
                                 st.session_state.conversation_chain = chain
+                        except Exception as reconnect_error:
+                            st.error(f"DB 재연결 실패: {str(reconnect_error)}")
+                        return
 
-    except Exception as reconnect_error:
-        st.error(f"DB 재연결 실패: {str(reconnect_error)}")
-    return
+    except Exception as e:
+        st.error(f"오류가 발생했습니다: {str(e)}")
+        return
     
     finally:
         # 리소스 정리
