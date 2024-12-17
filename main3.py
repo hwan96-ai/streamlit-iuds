@@ -4,7 +4,7 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import tempfile
 import os 
-from dotenv import load_dotenv
+
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_aws import BedrockEmbeddings, ChatBedrock
@@ -16,8 +16,7 @@ import time
 import boto3
 
 
-# 환경 변수 로드 직후에 추가
-load_dotenv()
+
 
 
 
@@ -29,9 +28,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# S3 관련 설정 (st.secrets 사용)
-BUCKET_NAME = st.secrets["aws_credentials"]["S3_BUCKET_NAME"]
-S3_DB_FOLDER = st.secrets["aws_credentials"]["S3_DB_FOLDER"]
+# secrets에서 값을 가져오기 전에 디버깅을 위한 출력 추가
+try:
+    BUCKET_NAME = st.secrets["aws_credentials"]["S3_BUCKET_NAME"]
+    S3_DB_FOLDER = st.secrets["aws_credentials"]["S3_DB_FOLDER"]
+except Exception as e:
+    st.error("Secrets 로딩 중 오류 발생")
+    st.write("Available secrets:", st.secrets.list())
+    raise e
 
 def get_aws_session():
     return boto3.Session(
@@ -39,7 +43,6 @@ def get_aws_session():
         aws_secret_access_key=st.secrets["aws_credentials"]["AWS_SECRET_ACCESS_KEY"],
         region_name=st.secrets["aws_credentials"]["AWS_REGION"]
     )
-
 def get_bedrock_client():
     session = get_aws_session()
     return session.client(
