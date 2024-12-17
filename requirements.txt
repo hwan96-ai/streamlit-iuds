@@ -14,6 +14,7 @@ langchain-text-splitters>=0.3.2
 # Database 관련
 chromadb>=0.5.23
 chroma-hnswlib>=0.7.6
+pysqlite3-binary>=0.5.1
 
 # Streamlit
 streamlit>=1.24.0
