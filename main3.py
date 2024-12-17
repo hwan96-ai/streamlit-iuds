@@ -603,7 +603,7 @@ def main():
         # verify_path_permissions(temp_dir)
         # clean_lock_files(temp_dir)
         # SQLite 권한 설정
-        set_sqlite_permissions(temp_dir)
+        # set_sqlite_permissions(temp_dir)
         
         # DB 로드 시도 (재시도 로직 포함)
         with st.spinner("데이터베이스를 불러오는 중..."):
