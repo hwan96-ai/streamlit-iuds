@@ -98,6 +98,15 @@ def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
         # 디버깅 정보
         st.write(f"S3 다운로드 시작: {bucket_name}/{s3_folder}")
         
+        # 다운로드 전 디렉토리 권한 설정
+        for root, dirs, files in os.walk(local_path):
+            for d in dirs:
+                dir_path = os.path.join(root, d)
+                os.chmod(dir_path, 0o777)
+            for f in files:
+                file_path = os.path.join(root, f)
+                os.chmod(file_path, 0o666)
+        
         paginator = s3_client.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=s3_folder)
         
@@ -163,7 +172,6 @@ def load_chroma_db(base_path: str):
         sqlite_path = os.path.join(base_path, "chroma.sqlite3")
         if os.path.exists(sqlite_path):
             st.write(f"SQLite 파일 권한: {oct(os.stat(sqlite_path).st_mode)[-3:]}")
-            # SQLite 파일 권한 변경
             os.chmod(sqlite_path, 0o666)
             st.write("SQLite 파일 권한 변경 완료")
         
@@ -177,13 +185,16 @@ def load_chroma_db(base_path: str):
         import chromadb
         from chromadb.config import Settings
         
-        # 설정 수정 - sqlite_database 제거
         chroma_settings = Settings(
             anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True,
-            persist_directory=base_path
+            persist_directory=base_path,
+            is_read_only=True  # 읽기 전용 모드 추가
         )
+        
+        # ChromaDB 클라이언트 생성
+        client = chromadb.Client(chroma_settings)
         
         # 모든 하위 디렉토리와 파일의 권한 설정
         for root, dirs, files in os.walk(base_path):
@@ -194,11 +205,11 @@ def load_chroma_db(base_path: str):
                 file_path = os.path.join(root, f)
                 os.chmod(file_path, 0o666)
         
-        # ChromaDB 인스턴스 생성
+        # Chroma 인스턴스 생성
         db = Chroma(
+            client=client,
             persist_directory=base_path,
-            embedding_function=embeddings,
-            client_settings=chroma_settings
+            embedding_function=embeddings
         )
         
         # 데이터베이스 연결 확인
@@ -382,18 +393,29 @@ def main():
     st.title("상품 문의 챗봇 🤖")
     
     # 임시 디렉토리 생성 및 권한 설정
-    temp_dir = tempfile.mkdtemp()
-    os.chmod(temp_dir, 0o777)  # 모든 사용자에게 읽기/쓰기 권한 부여
+    temp_dir = tempfile.mkdtemp(prefix='chroma_')
+    os.chmod(temp_dir, 0o777)
     db = None
     
     try:
         # 디버깅을 위한 정보 출력
         st.write(f"임시 디렉토리 경로: {temp_dir}")
+        st.write(f"임시 디렉토리 권한: {oct(os.stat(temp_dir).st_mode)[-3:]}")
         st.write(f"임시 디렉토리 존재 여부: {os.path.exists(temp_dir)}")
         
         # S3에서 DB 다운로드
         with st.spinner("데이터베이스를 불러오는 중..."):
             download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
+            
+            # 다운로드 후 파일 권한 확인 및 설정
+            for root, dirs, files in os.walk(temp_dir):
+                for d in dirs:
+                    dir_path = os.path.join(root, d)
+                    os.chmod(dir_path, 0o777)
+                for f in files:
+                    file_path = os.path.join(root, f)
+                    os.chmod(file_path, 0o666)
+        
         # DB 로드
         db = load_chroma_db(temp_dir)
         product_info = get_product_info_from_db(db)
@@ -426,7 +448,6 @@ def main():
             st.info(f"현재 선택: {selected_name}")
         
         # 세션 상태 초기화 또는 업데이트
-        # 세션 상태 초기화 또는 업데이트 부분 수정
         if ('conversation_chain' not in st.session_state or 
             'current_product_id' not in st.session_state or 
             st.session_state.current_product_id != selected_product_id):
@@ -436,12 +457,16 @@ def main():
                 st.session_state.current_product_id != selected_product_id):
                 clear_chat_history()
             
-            chain = create_rag_chain(db, selected_product_id)
-            st.session_state.conversation_chain = chain
-            st.session_state.current_product_id = selected_product_id
-    
-            # 페이지 새로고침
-            st.rerun()
+            try:
+                chain = create_rag_chain(db, selected_product_id)
+                st.session_state.conversation_chain = chain
+                st.session_state.current_product_id = selected_product_id
+                
+                # 페이지 새로고침
+                st.rerun()
+            except Exception as chain_error:
+                st.error(f"대화 체인 생성 중 오류 발생: {str(chain_error)}")
+                return
         
         if 'messages' not in st.session_state:
             st.session_state.messages = []
@@ -467,6 +492,10 @@ def main():
             with st.chat_message("assistant"):
                 with st.spinner('답변을 생성중입니다...'):
                     try:
+                        # ChromaDB 연결 확인
+                        if not hasattr(db, '_collection') or db._collection is None:
+                            raise ValueError("데이터베이스 연결이 유실되었습니다.")
+                        
                         # 응답 생성
                         response = st.session_state.conversation_chain.invoke({
                             "question": prompt,
@@ -510,41 +539,45 @@ def main():
                             st.markdown(answers[2])
                             if docs and len(docs) > 2:
                                 with st.expander("참고 문서 3"):
-                                    st.markdown(f"**내용:**\n{docs[2].page_content}")
-                                    st.markdown("**메타데이터:**")
-                                    st.json(docs[2].metadata)
-                        
-                        # 첫 번째 답변을 채팅 히스토리에 저장
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": answers[0]}
-                        )
-                        
-                    except Exception as e:
-                        st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
-                        return
+                                    st.markdown(f"**내용:**\n{docs[2].page_content}") st.markdown("메타데이터:") st.json(docs[2].metadata)
 
-    except Exception as e:
-        st.error(f"오류가 발생했습니다: {str(e)}")
-        return
-        
-    finally:
-        # 리소스 정리
-        try:
-            # ChromaDB 정리
-            if db is not None:
-                try:
-                    if hasattr(db, '_collection'):
-                        db._collection.count()  # 연결 확인
-                except Exception:
-                    pass  # 이미 연결이 닫혀있는 경우 무시
-                
-            # 임시 디렉토리 정리
-            if os.path.exists(temp_dir):
-                time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                
-        except Exception as cleanup_error:
-            st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
+                    # 첫 번째 답변을 채팅 히스토리에 저장
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": answers[0]}
+                    )
+                    
+                except Exception as e:
+                    st.error(f"응답 생성 중 오류 발생: {str(e)}")
+                    # DB 재연결 시도
+                    try:
+                        if db is not None:
+                            db = load_chroma_db(temp_dir)
+                    except:
+                        pass
+                    return
+
+except Exception as e:
+    st.error(f"오류가 발생했습니다: {str(e)}")
+    return
+    
+finally:
+    # 리소스 정리
+    try:
+        # ChromaDB 정리
+        if db is not None:
+            try:
+                if hasattr(db, '_collection'):
+                    db._collection.count()  # 연결 확인
+            except Exception:
+                pass  # 이미 연결이 닫혀있는 경우 무시
+            
+        # 임시 디렉토리 정리
+        if os.path.exists(temp_dir):
+            time.sleep(1)  # 파일 사용이 완전히 끝날 때까지 잠시 대기
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+    except Exception as cleanup_error:
+        st.warning(f"임시 파일 정리 중 오류 발생: {cleanup_error}")
 
 
 if __name__ == "__main__":
