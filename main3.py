@@ -3,7 +3,7 @@ import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import tempfile
-import st
+
 from dotenv import load_dotenv
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
