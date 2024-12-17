@@ -98,17 +98,9 @@ def load_chroma_db(base_path: str):
             client=bedrock_runtime
         )
         
-        # ChromaDB 설정 추가
-        settings = chromadb.config.Settings(
-            anonymized_telemetry=False,
-            is_persistent=True,
-            persist_directory=base_path
-        )
-        
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
-            client_settings=settings
         )
         
         # 연결 테스트
