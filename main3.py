@@ -85,22 +85,40 @@ def get_current_datetime_with_day():
 
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
-    if not os.path.exists(base_path):  # os.path 사용
+    if not os.path.exists(base_path):
         raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
     
     try:
+        # 권한 확인 및 설정
+        os.chmod(base_path, 0o777)
+        
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v1",
             client=bedrock_runtime
         )
         
+        # ChromaDB 설정 추가
+        settings = chromadb.config.Settings(
+            anonymized_telemetry=False,
+            is_persistent=True,
+            persist_directory=base_path
+        )
+        
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
+            client_settings=settings
         )
+        
+        # 연결 테스트
+        test_query = "test"
+        db.similarity_search(test_query, k=1)
+        
         return db
+        
     except Exception as e:
+        print(f"ChromaDB 로드 오류: {str(e)}")
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 
 def get_product_info_from_db(db: Chroma):
