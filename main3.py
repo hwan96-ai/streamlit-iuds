@@ -154,6 +154,7 @@ def get_current_datetime_with_day():
 #         db = Chroma(
 #             persist_directory=base_path,
 #             embedding_function=embeddings,
+
 #         )
 #         return db
 #     except Exception as e:
@@ -248,7 +249,7 @@ def load_chroma_db(base_path: str):
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
-            client_settings=chroma_settings
+            # client_settings=chroma_settings
         )
         
         # 데이터베이스 연결 확인
