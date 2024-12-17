@@ -49,6 +49,7 @@ def get_bedrock_client():
     )
 
 def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
+    """S3에서 ChromaDB 파일들을 다운로드"""
     session = get_aws_session()
     s3_client = session.client('s3')
     os.makedirs(local_path, exist_ok=True)  # Use os.makedirs
@@ -71,6 +72,8 @@ def download_db_from_s3(bucket_name: str, s3_folder: str, local_path: str):
                     obj['Key'],
                     local_file_path
                 )
+    except Exception as e:
+        raise Exception(f"S3에서 DB 다운로드 중 오류 발생: {str(e)}")
 
 def get_current_datetime_with_day():
     now = datetime.now()
