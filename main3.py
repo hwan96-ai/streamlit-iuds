@@ -569,9 +569,25 @@ def create_rag_chain(db: Chroma, product_uuid: str):
     )
 
     return chain
-
-
-        
+def check_file_permissions(temp_dir):
+    sqlite_path = os.path.join(temp_dir, "chroma.sqlite3")
+    if os.path.exists(sqlite_path):
+        st.write(f"SQLite DB 소유자: {os.stat(sqlite_path).st_uid}")
+        st.write(f"현재 프로세스 UID: {os.getuid()}")
+        st.write(f"파일 권한: {oct(os.stat(sqlite_path).st_mode)}")
+def clean_lock_files(temp_dir):
+    lock_file = os.path.join(temp_dir, "chroma.sqlite3-journal")
+    if os.path.exists(lock_file):
+        try:
+            os.remove(lock_file)
+            st.write("Lock 파일 제거됨")
+        except Exception as e:
+            st.write(f"Lock 파일 제거 실패: {e}")
+def verify_path_permissions(temp_dir):
+    current = temp_dir
+    while current != '/':
+        st.write(f"디렉토리 {current} 권한: {oct(os.stat(current).st_mode)}")
+        current = os.path.dirname(current)        
 def main():
     st.title("상품 문의 챗봇 🤖")
     
@@ -580,6 +596,11 @@ def main():
     db = None
     
     try:
+                # 진단 정보 출력
+        st.write("=== 진단 정보 ===")
+        check_file_permissions(temp_dir)
+        verify_path_permissions(temp_dir)
+        clean_lock_files(temp_dir)
         # SQLite 권한 설정
         set_sqlite_permissions(temp_dir)
         
