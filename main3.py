@@ -17,7 +17,7 @@ from langchain.schema.runnable import RunnablePassthrough
 import shutil
 import time
 import boto3
-
+from chromadb.config import Settings
 # 환경 변수 로드 직후에 추가
 load_dotenv()
 
@@ -223,9 +223,11 @@ def load_chroma_db(base_path: str):
         from chromadb.config import Settings
         
         settings = Settings(
+            anonymized_telemetry=False,
+            allow_reset=True,
             is_persistent=True,
             persist_directory=base_path,
-            anonymized_telemetry=False
+            sqlite_database=":memory:"  # 메모리 모드로 시도
         )
         
         bedrock_runtime = get_bedrock_client()
@@ -273,20 +275,40 @@ def load_db_with_retry(base_path: str, max_retries=3):
     for attempt in range(max_retries):
         try:
             st.write(f"DB 로드 시도 {attempt + 1}/{max_retries}")
+            
+            # SQLite 파일 권한 재설정
+            sqlite_path = os.path.join(base_path, "chroma.sqlite3")
+            if os.path.exists(sqlite_path):
+                os.chmod(sqlite_path, 0o777)  # 더 관대한 권한으로 설정
+                
+            # 상위 디렉토리들의 권한도 설정
+            current_path = base_path
+            while current_path != '/':
+                os.chmod(current_path, 0o777)
+                current_path = os.path.dirname(current_path)
+            
+            # DB 로드
             db = load_chroma_db(base_path)
-            return db
+            
+            # 연결 테스트
+            if verify_db_connection(db):
+                return db
+            time.sleep(1)  # 재시도 전 대기
+            
         except Exception as e:
             if attempt == max_retries - 1:
-                raise Exception(f"최대 재시도 횟수 초과: {str(e)}")
-            time.sleep(1)  # 재시도 전 대기
+                raise
+            time.sleep(1)
 
 def verify_db_connection(db: Chroma):
     """데이터베이스 연결 상태를 확인하는 함수"""
     try:
+        if db is None:
+            return False
         collection = db._collection
         count = collection.count()
         st.write(f"DB 연결 확인: {count}개의 문서 존재")
-        return True
+        return count > 0
     except Exception as e:
         st.error(f"DB 연결 확인 실패: {str(e)}")
         return False
