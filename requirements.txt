@@ -22,8 +22,6 @@ streamlit>=1.24.0
 python-dotenv>=0.19.0
 pytz>=2023.3
 datetime>=5.0
-tempfile>=3.3.0
-shutil>=1.7.0
 
 # 기타 의존성
 typing-extensions>=4.5.0
