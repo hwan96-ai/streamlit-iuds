@@ -105,16 +105,8 @@ def get_current_datetime_with_day():
 def load_chroma_db(base_path: str):
     """Chroma DB 로드"""
     try:
-        # 임시 디렉토리 생성 및 권한 설정
-        os.makedirs(base_path, exist_ok=True)
-        os.chmod(base_path, 0o777)
-        
-        # ChromaDB 설정
-        settings = {
-            "persist_directory": base_path,
-            "anonymized_telemetry": False,
-            "allow_reset": True
-        }
+        if not os.path.exists(base_path):
+            raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
         
         # Bedrock 클라이언트 설정
         bedrock_runtime = get_bedrock_client()
@@ -123,18 +115,16 @@ def load_chroma_db(base_path: str):
             client=bedrock_runtime
         )
         
-        # ChromaDB 인스턴스 생성
+        # ChromaDB 초기화
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
-            collection_metadata={"hnsw:space": "cosine"},
-            client_settings=settings
+            collection_name="product_qa"  # 컬렉션 이름 지정
         )
-        
         return db
+        
     except Exception as e:
-        st.error(f"ChromaDB 로드 실패: {str(e)}")
-        raise
+        raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
