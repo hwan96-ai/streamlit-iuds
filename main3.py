@@ -1,6 +1,13 @@
+# SQLite 설정
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
+# SQLite 초기화
+import sqlite3
+sqlite3.connect(':memory:').close()
+
+# 기본 imports
 import streamlit as st
 import tempfile
 import os
@@ -14,7 +21,6 @@ from langchain.schema.runnable import RunnablePassthrough
 import shutil
 import time
 import boto3
-import os
 
 # 환경 변수 로드 직후에 추가
 load_dotenv()
@@ -157,6 +163,14 @@ def load_chroma_db(base_path: str):
         st.write(f"DB 경로의 파일 목록: {os.listdir(base_path)}")
         st.write(f"DB 경로 권한: {oct(os.stat(base_path).st_mode)[-3:]}")
         
+        # SQLite 파일 권한 확인
+        sqlite_path = os.path.join(base_path, "chroma.sqlite3")
+        if os.path.exists(sqlite_path):
+            st.write(f"SQLite 파일 권한: {oct(os.stat(sqlite_path).st_mode)[-3:]}")
+            # SQLite 파일 권한 변경
+            os.chmod(sqlite_path, 0o666)
+            st.write("SQLite 파일 권한 변경 완료")
+        
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v1",
@@ -167,15 +181,16 @@ def load_chroma_db(base_path: str):
         import chromadb
         from chromadb.config import Settings
         
-        # ChromaDB 설정에서 추가 옵션 설정
+        # 새로운 설정 추가
         chroma_settings = Settings(
             anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True,
-            persist_directory=base_path
+            persist_directory=base_path,
+            sqlite_database=sqlite_path  # SQLite 파일 경로 직접 지정
         )
         
-        # 임시 해결책: 하위 디렉토리에 대한 권한도 설정
+        # 모든 하위 디렉토리와 파일의 권한 설정
         for root, dirs, files in os.walk(base_path):
             for d in dirs:
                 dir_path = os.path.join(root, d)
@@ -184,6 +199,15 @@ def load_chroma_db(base_path: str):
                 file_path = os.path.join(root, f)
                 os.chmod(file_path, 0o666)
         
+        # 임시 방편: SQLite 연결 테스트
+        import sqlite3
+        try:
+            conn = sqlite3.connect(sqlite_path)
+            conn.close()
+            st.write("SQLite 연결 테스트 성공")
+        except Exception as e:
+            st.error(f"SQLite 연결 테스트 실패: {str(e)}")
+        
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
@@ -191,12 +215,9 @@ def load_chroma_db(base_path: str):
         )
         
         # 데이터베이스 연결 확인
-        try:
-            collection = db._collection
-            count = collection.count()
-            st.write(f"데이터베이스 연결 성공: {count}개의 문서 확인")
-        except Exception as e:
-            st.error(f"데이터베이스 연결 확인 실패: {str(e)}")
+        collection = db._collection
+        count = collection.count()
+        st.write(f"데이터베이스 연결 성공: {count}개의 문서 확인")
         
         return db
     except Exception as e:
