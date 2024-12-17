@@ -29,16 +29,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# S3 관련 설정 (os.getenv 사용)
-BUCKET_NAME = st.getenv('S3_BUCKET_NAME')
-S3_DB_FOLDER = st.getenv('S3_DB_FOLDER')
-
+# S3 관련 설정 (st.secrets 사용)
+BUCKET_NAME = st.secrets["aws_credentials"]["S3_BUCKET_NAME"]
+S3_DB_FOLDER = st.secrets["aws_credentials"]["S3_DB_FOLDER"]
 
 def get_aws_session():
     return boto3.Session(
-        aws_access_key_id=os.environ.get('aws_access_key_id'),
-        aws_secret_access_key=os.environ.get('aws_secret_access_key'),
-        region_name=os.environ.get('region')
+        aws_access_key_id=st.secrets["aws_credentials"]["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=st.secrets["aws_credentials"]["AWS_SECRET_ACCESS_KEY"],
+        region_name=st.secrets["aws_credentials"]["AWS_REGION"]
     )
 
 def get_bedrock_client():
