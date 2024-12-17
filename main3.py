@@ -22,16 +22,27 @@ import os
 from datetime import datetime
 from langchain.schema.runnable import RunnablePassthrough
 def get_bedrock_client():
+    try:
+        # Streamlit Cloud의 secrets에서 가져오기 시도
+        aws_access_key_id = st.secrets.get("aws_access_key_id")
+        aws_secret_access_key = st.secrets.get("aws_secret_access_key")
+    except:
+        # 로컬 환경변수에서 가져오기 시도
+        aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+        aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    
+    if not aws_access_key_id or not aws_secret_access_key:
+        raise ValueError("AWS 인증 정보가 설정되지 않았습니다.")
+    
     session = boto3.Session(
-        aws_access_key_id=st.secrets["aws_access_key_id"],
-        aws_secret_access_key=st.secrets["aws_secret_access_key"],
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
         region_name="us-west-2"
     )
     return session.client(
         service_name="bedrock-runtime",
         region_name="us-west-2"
     )
-
 def get_current_datetime_with_day():
     now = datetime.now()
     year = now.year
@@ -366,4 +377,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"예상치 못한 오류가 발생했습니다: {str(e)}")
-        st.error("자세한 오류 정보:")  # exc_info 파라미터 제거
+        st.error("자세한 오류 정보")  # exc_info 파라미터 제거
