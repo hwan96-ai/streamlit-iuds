@@ -4,7 +4,10 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import tempfile
 import os 
-
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_aws import BedrockEmbeddings, ChatBedrock
@@ -166,6 +169,18 @@ def retrieve_docs(query: str, db=None, product_uuid=None):
         print(f"문서 검색 중 오류 발생: {str(e)}")
         return []
     
+def create_filtered_retriever(db: Chroma, product_uuid: str):
+    """특정 product_uuid에 대한 필터링된 retriever 생성"""
+    search_kwargs = {
+        "filter": {'product_uuid': product_uuid},
+        "k": 3
+    }
+    
+    return db.as_retriever(
+        search_kwargs=search_kwargs,
+        search_type="similarity"
+    )
+
 def create_rag_chain(db: Chroma, product_uuid: str):
     """RAG 체인 생성"""
     llm = ChatBedrock(
@@ -173,11 +188,19 @@ def create_rag_chain(db: Chroma, product_uuid: str):
         client=get_bedrock_client(),
         model_kwargs={
             "temperature": 0,
-            "max_tokens": 4000
-        }
+            "top_k": 0,
+            "top_p": 1,
+            "max_tokens": 4000,
+            "stop_sequences": ["\n\nHuman"]
+        },
+        streaming=True,
+        callbacks=[StreamingStdOutCallbackHandler()]
     )
-    
-    # 컨텍스트 인식 질문 재구성을 위한 프롬프트
+
+    # 필터링된 retriever 생성
+    retriever = create_filtered_retriever(db, product_uuid)
+
+    # 컨텍스트 인식 질문 재구성
     contextualize_q_system_prompt = """Given a chat history and the latest user question \
     which might reference context in the chat history, formulate a standalone question \
     which can be understood without the chat history. Do NOT answer the question, \
@@ -185,111 +208,41 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 
     contextualize_q_prompt = ChatPromptTemplate.from_messages([
         ("system", contextualize_q_system_prompt),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{question}"),
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
     ])
 
-    # 메인 QA 프롬프트
-    current_time = get_current_datetime_with_day()
-    qa_system_prompt = f"""당신은 이 상품의 판매자입니다.
+    # History-aware retriever 생성
+    history_aware_retriever = create_history_aware_retriever(
+        llm, retriever, contextualize_q_prompt
+    )
+
+    # QA 체인 생성
+    qa_system_prompt = """당신은 이 상품의 판매자입니다.
     중요 규칙:
     1. 컨텍스트에 명시된 정보만 사용해야 합니다
     - 컨텍스트에 없는 내용은 "해당 정보가 없어 답변드리기 어렵습니다"라고 답변하세요
     - 추측이나 일반적인 답변은 금지됩니다
     2. 답변 전 반드시 컨텍스트를 확인하세요.
-    - 가격, 수량, 배송일정 등 수치는 반드시 컨텍스트와 일치해야 함
-    - 없는 정보를 임의로 생성하지 마세요
     3. 질문과 직접 관련된 정보만 답변하세요
-    - 불필요한 부가 설명이나 맥락은 제외
-    - 이전 대화에서 확인된 내용만 참조
-    4. 배송 관련 질문에 공휴일과 현재 시간: '{current_time}'을 고려하세요
-    
-    답변을 3가지 스타일로 작성하고 각 답변 사이에 ### 를 넣어서 구분해주세요.
-    1번째 답변: 문의내역 + 동일한 스타일
-    2번째 답변: 문의내역 + 창의적인 스타일
-    3번째 답변: 문의내역 + 재밌는 답변
-
-    형식: 답변1 ###\n 답변2 ###\n 답변3
-
-    주의사항:
-    1. 오직 답변과 구분자(###)만 출력하세요
-    2. 컨텍스트의 대화 스타일과 이모지를 참고하세요
-    3. 절대 고객의 개인 정보(주소,휴대폰 번호 등)는 답변하지마세요.
-
-    상품 정보 및 과거 문의 내역:
-    {{context}}
-    """
+    Context: {context}"""
 
     qa_prompt = ChatPromptTemplate.from_messages([
         ("system", qa_system_prompt),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{question}")
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
     ])
 
-    # 검색기 설정
-    retriever = db.as_retriever(
-        search_kwargs={
-            "k": 3,
-            "filter": {"product_uuid": product_uuid}
-        }
-    )
-
-    # History-aware retriever 생성
-    def create_history_aware_retriever(llm, retriever, prompt):
-        def get_retriever_chain(llm, prompt):
-            chain = prompt | llm | StrOutputParser()
-            return chain
-
-        def historical_retriever(inputs):
-            question = inputs["question"]
-            chat_history = inputs["chat_history"]
-            
-            context_chain = get_retriever_chain(llm, prompt)
-            contextualized_q = context_chain.invoke({
-                "question": question,
-                "chat_history": chat_history
-            })
-            
-            return retriever.invoke(contextualized_q)
-
-        return historical_retriever
-
     # Document chain 생성
-    def create_stuff_documents_chain(llm, prompt):
-        def format_docs(docs):
-            return "\n\n".join([d.page_content for d in docs])
-        
-        chain = (
-            RunnablePassthrough.assign(
-                context=lambda x: format_docs(x["documents"])
-            ) 
-            | prompt 
-            | llm 
-            | StrOutputParser()
-        )
-        return chain
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
-    # 전체 체인 조합
-    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
-    doc_chain = create_stuff_documents_chain(llm, qa_prompt)
-    
-    chain = (
-        RunnablePassthrough.assign(
-            chat_history=lambda x: x["chat_history"]
-        ) 
-        | {
-            "question": lambda x: x["question"],
-            "chat_history": lambda x: x["chat_history"],
-            "documents": lambda x: history_aware_retriever({
-                "question": x["question"],
-                "chat_history": x["chat_history"]
-            })
-        } 
-        | doc_chain
+    # 최종 RAG 체인 생성
+    rag_chain = create_retrieval_chain(
+        history_aware_retriever, 
+        question_answer_chain
     )
 
-    return chain
-
+    return rag_chain
 
         
 def main():
@@ -328,16 +281,13 @@ def main():
         try:
             db = load_chroma_db(temp_dir)
             st.success("데이터베이스 로드 완료")
-        except Exception as e:
-            st.error(f"데이터베이스 로드 실패: {str(e)}")
-            return
-        
-        # 제품 정보 가져오기
-        product_info = get_product_info_from_db(db)
-        
-        if not product_info:
-            st.error("제품 정보를 불러올 수 없습니다. 데이터베이스를 확인해주세요.")
-            return
+            
+            # 제품 정보 가져오기
+            product_info = get_product_info_from_db(db)
+            
+            if not product_info:
+                st.error("제품 정보를 불러올 수 없습니다. 데이터베이스를 확인해주세요.")
+                return
         
         # 사이드바 설정
         with st.sidebar:
