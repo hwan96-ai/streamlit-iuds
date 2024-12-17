@@ -97,21 +97,37 @@ def load_chroma_db(base_path: str):
         
         # ChromaDB 설정 추가
         from chromadb.config import Settings
-        chroma_settings = Settings(
-            anonymized_telemetry=False,
-            is_persistent=True,
-            persist_directory=base_path
+        import chromadb
+        
+        # ChromaDB 클라이언트 생성
+        client = chromadb.PersistentClient(
+            path=base_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                is_persistent=True,
+            )
         )
         
+        # 컬렉션 이름 확인 (예시로 'my_collection' 사용)
+        collection_name = "my_collection"
+        
+        # 기존 컬렉션 가져오기 또는 새로 생성
+        try:
+            collection = client.get_collection(collection_name)
+        except ValueError:
+            collection = client.create_collection(collection_name)
+        
+        # Langchain Chroma 인스턴스 생성
         db = Chroma(
-            persist_directory=base_path,
+            client=client,
+            collection_name=collection_name,
             embedding_function=embeddings,
-            client_settings=chroma_settings,
         )
+        
         return db
     except Exception as e:
+        st.error(f"ChromaDB 로드 중 오류 발생: {str(e)}")
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
-
 def get_product_info_from_db(db: Chroma):
     """Chroma DB에서 제품 정보 가져오기"""
     try:
@@ -282,18 +298,39 @@ def create_rag_chain(db: Chroma, product_uuid: str):
 def main():
     st.title("상품 문의 챗봇 🤖")
     
+    # 임시 디렉토리 생성 시 권한 설정
     temp_dir = tempfile.mkdtemp()
-    db = None
+    os.chmod(temp_dir, 0o777)  # 모든 사용자에게 읽기/쓰기 권한 부여
     
     try:
         # S3에서 DB 다운로드
         with st.spinner("데이터베이스를 불러오는 중..."):
+            st.write(f"임시 디렉토리 생성: {temp_dir}")
+            st.write(f"임시 디렉토리 권한: {oct(os.stat(temp_dir).st_mode)[-3:]}")
+            
             download_db_from_s3(BUCKET_NAME, S3_DB_FOLDER, temp_dir)
+            st.write("S3에서 DB 다운로드 완료")
+            
             time.sleep(1)  # 파일 시스템 동기화를 위한 잠시 대기
         
+        # DB 파일 존재 확인
+        files = os.listdir(temp_dir)
+        st.write(f"DB 파일 목록: {files}")
+        
+        # 파일 권한 확인
+        for file in files:
+            file_path = os.path.join(temp_dir, file)
+            st.write(f"파일 {file} 권한: {oct(os.stat(file_path).st_mode)[-3:]}")
+        
         # DB 로드
+        st.write(f"DB 로드 시작: {temp_dir}")
         db = load_chroma_db(temp_dir)
+        st.write("ChromaDB 로드 완료")
+        
+        # 제품 정보 로드
+        st.write("제품 정보 로드 시작")
         product_info = get_product_info_from_db(db)
+        st.write(f"찾은 제품 수: {len(product_info)}")
         
         if not product_info:
             st.error("제품 정보를 불러올 수 없습니다. 데이터베이스를 확인해주세요.")
