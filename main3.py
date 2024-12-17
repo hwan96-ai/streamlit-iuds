@@ -219,16 +219,14 @@ def get_current_datetime_with_day():
 #         st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
 #         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 def load_chroma_db(base_path: str):
+    """Chroma DB 로드"""
+    if not os.path.exists(base_path):
+        raise ValueError(f"데이터베이스가 존재하지 않습니다: {base_path}")
+    
     try:
-        from chromadb.config import Settings
-        
-        settings = Settings(
-            anonymized_telemetry=False,
-            allow_reset=True,
-            is_persistent=True,
-            persist_directory=base_path,
-            sqlite_database=":memory:"  # 메모리 모드로 시도
-        )
+        # 디버깅을 위한 정보 출력
+        st.write(f"DB 경로의 파일 목록: {os.listdir(base_path)}")
+        st.write(f"DB 경로 권한: {oct(os.stat(base_path).st_mode)[-3:]}")
         
         bedrock_runtime = get_bedrock_client()
         embeddings = BedrockEmbeddings(
@@ -236,15 +234,32 @@ def load_chroma_db(base_path: str):
             client=bedrock_runtime
         )
         
+        # ChromaDB 설정
+        from chromadb.config import Settings
+        
+        chroma_settings = Settings(
+            anonymized_telemetry=False,
+            allow_reset=True,
+            is_persistent=True,
+            persist_directory=base_path
+        )
+        
+        # ChromaDB 인스턴스 생성
         db = Chroma(
             persist_directory=base_path,
             embedding_function=embeddings,
-            client_settings=settings
+            client_settings=chroma_settings
         )
+        
+        # 데이터베이스 연결 확인
+        collection = db._collection
+        count = collection.count()
+        st.write(f"데이터베이스 연결 성공: {count}개의 문서 확인")
         
         return db
         
     except Exception as e:
+        st.error(f"ChromaDB 로드 실패 상세 정보: {str(e)}")
         raise Exception(f"ChromaDB 로드 실패: {str(e)}")
 
 def set_sqlite_permissions(base_path: str):
