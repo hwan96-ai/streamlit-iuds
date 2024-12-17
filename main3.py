@@ -277,7 +277,7 @@ def main():
                 st.error(f"데이터베이스 다운로드 실패: {str(e)}")
                 return
         
-        # DB 로드
+        # DB 로드 시도
         try:
             db = load_chroma_db(temp_dir)
             st.success("데이터베이스 로드 완료")
@@ -288,128 +288,109 @@ def main():
             if not product_info:
                 st.error("제품 정보를 불러올 수 없습니다. 데이터베이스를 확인해주세요.")
                 return
+            
+            # 사이드바 설정
+            with st.sidebar:
+                st.title("제품 선택 🛍️")
+                st.markdown("---")
+                
+                product_names = {name: uuid for uuid, name in product_info.items()}
+                selected_name = st.selectbox(
+                    "문의하실 제품을 선택하세요",
+                    options=list(product_names.keys()),
+                    key="product_selector"
+                )
+                selected_product_id = product_names[selected_name]
+                
+                st.markdown("---")
+                
+                if st.button("💫 채팅 기록 초기화", use_container_width=True):
+                    clear_chat_history()
+                    st.success("채팅 기록이 초기화되었습니다!")
+                    st.rerun()
+                
+                st.markdown("### 선택된 제품 정보")
+                st.info(f"현재 선택: {selected_name}")
+            
+            # 세션 상태 초기화 또는 업데이트
+            if ('conversation_chain' not in st.session_state or 
+                'current_product_id' not in st.session_state or 
+                st.session_state.current_product_id != selected_product_id):
+                
+                # 제품이 변경되었을 때 채팅 기록 초기화
+                if ('current_product_id' in st.session_state and 
+                    st.session_state.current_product_id != selected_product_id):
+                    clear_chat_history()
+                
+                chain = create_rag_chain(db, selected_product_id)
+                st.session_state.conversation_chain = chain
+                st.session_state.current_product_id = selected_product_id
         
-        # 사이드바 설정
-        with st.sidebar:
-            st.title("제품 선택 🛍️")
-            st.markdown("---")
-            
-            product_names = {name: uuid for uuid, name in product_info.items()}
-            selected_name = st.selectbox(
-                "문의하실 제품을 선택하세요",
-                options=list(product_names.keys()),
-                key="product_selector"
-            )
-            selected_product_id = product_names[selected_name]
-            
-            st.markdown("---")
-            
-            if st.button("💫 채팅 기록 초기화", use_container_width=True):
-                clear_chat_history()
-                st.success("채팅 기록이 초기화되었습니다!")
+                # 페이지 새로고침
                 st.rerun()
             
-            st.markdown("### 선택된 제품 정보")
-            st.info(f"현재 선택: {selected_name}")
-        
-        # 세션 상태 초기화 또는 업데이트
-        if ('conversation_chain' not in st.session_state or 
-            'current_product_id' not in st.session_state or 
-            st.session_state.current_product_id != selected_product_id):
+            if 'messages' not in st.session_state:
+                st.session_state.messages = []
             
-            # 제품이 변경되었을 때 채팅 기록 초기화
-            if ('current_product_id' in st.session_state and 
-                st.session_state.current_product_id != selected_product_id):
-                clear_chat_history()
+            # 초기 메시지 표시
+            if not st.session_state.messages:
+                st.markdown(f"""
+                ### 👋 안녕하세요!
+                **{product_info[selected_product_id]}**에 대해 궁금하신 점을 자유롭게 문의해주세요.
+                """)
             
-            chain = create_rag_chain(db, selected_product_id)
-            st.session_state.conversation_chain = chain
-            st.session_state.current_product_id = selected_product_id
-    
-            # 페이지 새로고침
-            st.rerun()
-        
-        if 'messages' not in st.session_state:
-            st.session_state.messages = []
-        
-        # 초기 메시지 표시
-        if not st.session_state.messages:
-            st.markdown(f"""
-            ### 👋 안녕하세요!
-            **{product_info[selected_product_id]}**에 대해 궁금하신 점을 자유롭게 문의해주세요.
-            """)
-        
-        # 이전 메시지들 표시
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-        
-        # 새로운 사용자 입력 처리
-        if prompt := st.chat_input("무엇을 도와드릴까요?"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            # 이전 메시지들 표시
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
             
-            with st.chat_message("assistant"):
-                with st.spinner('답변을 생성중입니다...'):
-                    try:
-                        # 응답 생성
-                        response = st.session_state.conversation_chain.invoke({
-                            "question": prompt,
-                            "chat_history": st.session_state.messages
-                        })
+            # 새로운 사용자 입력 처리
+            if prompt := st.chat_input("무엇을 도와드릴까요?"):
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner('답변을 생성중입니다...'):
+                        try:
+                            # 응답 생성
+                            response = st.session_state.conversation_chain.invoke({
+                                "input": prompt,
+                                "chat_history": st.session_state.messages
+                            })
 
-                        if not response:
-                            raise ValueError("응답이 생성되지 않았습니다.")
+                            if not response.get('answer'):
+                                raise ValueError("응답이 생성되지 않았습니다.")
 
-                        # 응답을 ### 구분자로 분리하고 처리
-                        answers = response.split("###")
-                        answers = [answer.strip() for answer in answers]
-                        
-                        # 필요한 경우 답변 리스트 보충
-                        while len(answers) < 3:
-                            answers.append("답변이 없습니다.")
-                        
-                        # 참고 문서 가져오기
-                        docs = retrieve_docs(prompt, db, selected_product_id)
-                        
-                        # 탭으로 다양한 응답 스타일 표시
-                        tab1, tab2, tab3 = st.tabs(["💬 기본 답변", "✨ 창의적 답변", "😊 재미있는 답변"])
-                        
-                        with tab1:
-                            st.markdown(answers[0])
-                            if docs and len(docs) > 0:
-                                with st.expander("참고 문서 1"):
-                                    st.markdown(f"**내용:**\n{docs[0].page_content}")
-                                    st.markdown("**메타데이터:**")
-                                    st.json(docs[0].metadata)
-                        
-                        with tab2:
-                            st.markdown(answers[1])
-                            if docs and len(docs) > 1:
-                                with st.expander("참고 문서 2"):
-                                    st.markdown(f"**내용:**\n{docs[1].page_content}")
-                                    st.markdown("**메타데이터:**")
-                                    st.json(docs[1].metadata)
-                        
-                        with tab3:
-                            st.markdown(answers[2])
-                            if docs and len(docs) > 2:
-                                with st.expander("참고 문서 3"):
-                                    st.markdown(f"**내용:**\n{docs[2].page_content}")
-                                    st.markdown("**메타데이터:**")
-                                    st.json(docs[2].metadata)
-                        
-
-                        # 첫 번째 답변을 채팅 히스토리에 저장
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": answers[0]}
-                        )
-                        
-                    except Exception as e:
-                        st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
-                        return
-
+                            # 응답 처리
+                            answer = response['answer']
+                            source_documents = response.get('source_documents', [])
+                            
+                            # 응답 표시
+                            st.write(answer)
+                            
+                            # 참고 문서 표시
+                            if source_documents:
+                                with st.expander("참고 문서"):
+                                    for i, doc in enumerate(source_documents[:3], 1):
+                                        st.markdown(f"**문서 {i}**")
+                                        st.markdown(f"내용: {doc.page_content}")
+                                        st.markdown("메타데이터:")
+                                        st.json(doc.metadata)
+                            
+                            # 응답을 채팅 히스토리에 저장
+                            st.session_state.messages.append(
+                                {"role": "assistant", "content": answer}
+                            )
+                            
+                        except Exception as e:
+                            st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
+                            return
+                            
+        except Exception as e:
+            st.error(f"데이터베이스 로드 실패: {str(e)}")
+            return
+            
     except Exception as e:
         st.error(f"오류가 발생했습니다: {str(e)}")
         return
