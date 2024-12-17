@@ -1,4 +1,7 @@
-
+# SQLite 버전 문제 해결을 위한 코드
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import boto3
 import tempfile
